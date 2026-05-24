@@ -129,8 +129,8 @@ static double sum_turnaround = 0.0;
 static double max_turnaround = 0.0;
 static double theoretical_max_time = 0.0;
 
-static std::mutex in_postprocess_mutex;
 static std::mutex in_preprocess_mutex;
+static std::mutex in_postprocess_mutex;
 static std::mutex in_fusion_mutex;
 
 // Utility function to get precise thread execution time safely
@@ -805,11 +805,12 @@ static void preprocess_task(tflite::Interpreter * interpreter, int model_mode, s
     size_t last_slash_idx = filename.find_last_of("/\\");
     std::string base_filename = (last_slash_idx == std::string::npos) ? filename : filename.substr(last_slash_idx + 1);
     
-    std::lock_guard<std::mutex> guard(in_preprocess_mutex);
+    in_preprocess_mutex.lock();
     if (g_verbose) {
         std::cout << "Processing " << base_filename << "..\r";
         std::cout.flush();
     }
+    in_preprocess_mutex.unlock();
 
     double preprocess_start = get_thread_time_ms();
     
@@ -879,8 +880,10 @@ static void preprocess_task(tflite::Interpreter * interpreter, int model_mode, s
     free(rgb_buf_ptr);
 
     double preprocess_elapsed = get_thread_time_ms() - preprocess_start;
+    in_preprocess_mutex.lock();
     sum_preprocess_time += preprocess_elapsed;
     num_preproces++;
+    in_preprocess_mutex.unlock();
 }
 
 static Object3D project_to_global_3d(const DetResult& box2d, const CamInfo& cam) {
@@ -1165,8 +1168,9 @@ static void simultaneous_batch_fusion_task(
     }
 
     double fusion_elapsed = get_thread_time_ms() - fusion_start;
-    std::lock_guard<std::mutex> guard(in_fusion_mutex);
+    in_fusion_mutex.lock();
     sum_fusion_time += fusion_elapsed;
+    in_fusion_mutex.unlock();
 }
 
 static void sequential_fusion_task(std::vector<DetResult>& valid_results, const CamInfo& cam_info, MultiObjectTracker& tracker) {
@@ -1185,8 +1189,9 @@ static void sequential_fusion_task(std::vector<DetResult>& valid_results, const 
     tracker.update_measurements(spatial_fused);
 
     double fusion_elapsed = get_thread_time_ms() - fusion_start;
-    std::lock_guard<std::mutex> guard(in_fusion_mutex);
+    in_fusion_mutex.lock();
     sum_fusion_time += fusion_elapsed;
+    in_fusion_mutex.unlock();
 }
 
 static void postprocess_task_multicam(
@@ -1822,8 +1827,9 @@ static void build_json_annotations(const std::vector<Object3D>& tracked_3d, cons
             json_object_object_add(ann, "detection_score", json_object_new_double(obj.score));
             json_object_object_add(ann, "attribute_name", json_object_new_string(obj.attribute_name.c_str())); 
             
-            std::lock_guard<std::mutex> guard(in_postprocess_mutex);
+            in_fusion_mutex.lock();
             json_object_array_add(json_annotations, ann);
+            in_fusion_mutex.unlock();
         }
     }
 }
@@ -2393,13 +2399,14 @@ double run_evaluation_pipeline(
                     json_object* sample_array = json_object_new_array();
                     build_json_annotations(tracks_snapshot_for_eval, current_copy, sample_array);
                     
-                    std::lock_guard<std::mutex> guard(in_postprocess_mutex);
+                    in_fusion_mutex.lock();
                     json_object* existing = nullptr;
                     if (!json_object_object_get_ex(json_results_dict, current_copy.sample_token.c_str(), &existing)) {
                         json_object_object_add(json_results_dict, current_copy.sample_token.c_str(), sample_array);
                     } else {
                         json_object_put(sample_array); 
                     }
+                    in_fusion_mutex.unlock();
                 });
             }
         }
