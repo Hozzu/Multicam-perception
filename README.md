@@ -23,7 +23,7 @@ Ensure the following libraries are installed on your target system:
 *   OpenCV (`libopencv_core`, `libopencv_imgproc`, `libopencv_dnn`, etc.)
 *   GStreamer 1.0 (`gstreamer-1.0`, `gstreamer-app-1.0`, `gstreamer-video-1.0`)
 *   Wayland & EGL (`wayland-client`, `wayland-egl`, `EGL`, `GLESv2`)
-*   libjpeg (`libjpeg.so`)
+*   libturbojpeg (`libturbojpeg.so`)
 *   JSON-C (`libjson-c.so`)
 *   Eigen3 (Header only)
 *   *Platform Specific:* `qcarcam` and `fastcv` (for ARM64/Qualcomm environments).
