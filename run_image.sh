@@ -7,7 +7,7 @@ MODELDIR=~/new_model
 
 BATCHNUM=4
 
-for MODELFILE in yolov11x.hef yolov11m.mxq yolov11m.tflite
+for MODELFILE in yolov11m.hef yolov11m.tflite
 do
 
 MODELFILE=$MODELDIR/$MODELFILE

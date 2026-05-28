@@ -16,7 +16,7 @@
 #include <iomanip>
 #include <time.h>
 
-#include <jpeglib.h>
+#include <turbojpeg.h>
 #include <dirent.h>
 #include <unistd.h>
 #include <eigen3/Eigen/Dense>
@@ -164,12 +164,12 @@ public:
     ThreadPool(size_t num_threads, const std::vector<int>& cpus) : stop(false), active_tasks(0) {
         for(size_t i = 0; i < num_threads; ++i) {
             workers.emplace_back([this, cpus] {
+                // Set Affinity once per worker thread
                 cpu_set_t cpuset;
                 CPU_ZERO(&cpuset);
                 for(int cpu : cpus) { CPU_SET(cpu, &cpuset); }
-                pthread_t current_thread = pthread_self();
-                if(pthread_setaffinity_np(current_thread, sizeof(cpu_set_t), &cpuset) != 0) {
-                    // Fail silently to avoid console spam
+                if(pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset) != 0) {
+                    std::cerr << "ERROR: Failed to set thread affinity for thread pool.\n";
                 }
 
                 while(true) {
@@ -814,70 +814,91 @@ static void preprocess_task(tflite::Interpreter * interpreter, int model_mode, s
 
     double preprocess_start = get_thread_time_ms();
     
-    struct jpeg_decompress_struct cinfo;
-    struct jpeg_error_mgr jerr;
-    cinfo.err = jpeg_std_error(&jerr);
-    jpeg_create_decompress(&cinfo);
+    thread_local std::vector<uint8_t> file_buf;
+    thread_local std::vector<uint8_t> rgb_buf;
 
     FILE * fp = fopen(filename.c_str(), "rb");
     if(fp == NULL) {
         if (g_verbose) std::cerr << "WARNING: Cannot open the image: " << filename << ". Using default resolution fallback." << std::endl;
-        jpeg_destroy_decompress(&cinfo);
         img_heights[cam_idx] = 900;
         img_widths[cam_idx] = 1600;
         return; 
     }
-    jpeg_stdio_src(&cinfo, fp);
-    
-    if(jpeg_read_header(&cinfo, TRUE) != JPEG_HEADER_OK) {
-        if (g_verbose) std::cerr << "WARNING: Invalid JPEG header for: " << filename << std::endl;
-        fclose(fp);
-        jpeg_destroy_decompress(&cinfo);
-        img_heights[cam_idx] = 900;
-        img_widths[cam_idx] = 1600;
-        return;
-    }
 
-    cinfo.out_color_space = JCS_RGB;
-    cinfo.output_components = 3;
-    jpeg_start_decompress(&cinfo);
+    fseek(fp, 0, SEEK_END);
+    long file_size = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
 
-    int img_height = cinfo.output_height;
-    int img_width = cinfo.output_width;
-    int row_stride = cinfo.output_width * 3;
-
-    if (img_height <= 0 || img_width <= 0) {
-        if (g_verbose) std::cerr << "WARNING: JPEG dimensions invalid for: " << filename << std::endl;
-        jpeg_finish_decompress(&cinfo);
-        jpeg_destroy_decompress(&cinfo);
+    if (file_size <= 0) {
+        if (g_verbose) std::cerr << "WARNING: File size is invalid for: " << filename << std::endl;
         fclose(fp);
         img_heights[cam_idx] = 900;
         img_widths[cam_idx] = 1600;
         return;
     }
 
-    img_heights[cam_idx] = img_height;
-    img_widths[cam_idx] = img_width;
-
-    uint8_t * rgb_buf_ptr = (uint8_t *)malloc(sizeof(uint8_t) * img_height * img_width * 3);
-    if(rgb_buf_ptr == nullptr) {
-        if (g_verbose) std::cerr << "ERROR: Memory allocation failed for image buffer.\n";
-        jpeg_finish_decompress(&cinfo);
-        jpeg_destroy_decompress(&cinfo);
-        fclose(fp);
-        return;
-    }
-
-    while(cinfo.output_scanline < cinfo.output_height){
-        uint8_t * rowptr = rgb_buf_ptr + row_stride * cinfo.output_scanline; 
-        jpeg_read_scanlines(&cinfo, &rowptr, 1);
-    }
-    jpeg_finish_decompress(&cinfo);
-    jpeg_destroy_decompress(&cinfo);
+    file_buf.resize(file_size);
+    size_t bytes_read = fread(file_buf.data(), 1, file_size, fp);
     fclose(fp);
 
-    preprocess(interpreter, model_mode, rgb_buf_ptr, img_height, img_width, tensor_batch_idx);
-    free(rgb_buf_ptr);
+    if (bytes_read != file_size) {
+        if (g_verbose) std::cerr << "WARNING: Failed to read the entire file for: " << filename << std::endl;
+        img_heights[cam_idx] = 900;
+        img_widths[cam_idx] = 1600;
+        return;
+    }
+
+    // Initialize TurboJPEG Decompressor
+    tjhandle tjInstance = tjInitDecompress();
+    if (tjInstance == NULL) {
+        if (g_verbose) std::cerr << "ERROR: TurboJPEG init failed: " << tjGetErrorStr2(NULL) << std::endl;
+        img_heights[cam_idx] = 900;
+        img_widths[cam_idx] = 1600;
+        return;
+    }
+
+    int width, height, jpegSubsamp, jpegColorspace;
+
+    // Read JPEG header from the memory buffer
+    if (tjDecompressHeader3(tjInstance, file_buf.data(), file_size, &width, &height, &jpegSubsamp, &jpegColorspace) < 0) {
+        if (g_verbose) std::cerr << "WARNING: TurboJPEG header decoding failed for: " << filename << ". Error: " << tjGetErrorStr2(tjInstance) << std::endl;
+        tjDestroy(tjInstance);
+        img_heights[cam_idx] = 900;
+        img_widths[cam_idx] = 1600;
+        return;
+    }
+
+    if (width <= 0 || height <= 0) {
+        if (g_verbose) std::cerr << "WARNING: JPEG dimensions invalid for: " << filename << std::endl;
+        tjDestroy(tjInstance);
+        img_heights[cam_idx] = 900;
+        img_widths[cam_idx] = 1600;
+        return;
+    }
+
+    img_heights[cam_idx] = height;
+    img_widths[cam_idx] = width;
+
+    // Resize RGB buffer if needed
+    size_t required_rgb_size = width * height * 3;
+    if (rgb_buf.size() < required_rgb_size) {
+        rgb_buf.resize(required_rgb_size);
+    }
+
+    // Decode the JPEG image directly into the RGB buffer
+    // TJPF_RGB means we want the output as interleaved RGB
+    // 0 for pitch means default (width * pixel size)
+    if (tjDecompress2(tjInstance, file_buf.data(), file_size, rgb_buf.data(), width, 0, height, TJPF_RGB, TJFLAG_FASTDCT) < 0) {
+        if (g_verbose) std::cerr << "ERROR: TurboJPEG decompression failed for: " << filename << ". Error: " << tjGetErrorStr2(tjInstance) << std::endl;
+        tjDestroy(tjInstance);
+        return;
+    }
+
+    // Cleanup Decompressor
+    tjDestroy(tjInstance);
+
+    // Call your optimized preprocess function
+    preprocess(interpreter, model_mode, rgb_buf.data(), height, width, tensor_batch_idx);
 
     double preprocess_elapsed = get_thread_time_ms() - preprocess_start;
     in_preprocess_mutex.lock();
@@ -1153,19 +1174,23 @@ static void simultaneous_batch_fusion_task(
 {
     double fusion_start = get_thread_time_ms();
 
+    // 1. Aggregate all detections from all cameras into a single global space first
+    std::vector<Object3D> global_3d;
     for (size_t c = 0; c < batch_boxes.size(); ++c) {
-        std::vector<Object3D> local_3d;
         for (const auto& box : batch_boxes[c]) {
             if (box.score < Params::score_threshold) continue;
             if (box.id >= 0 && box.id <= 9) {
-                local_3d.push_back(project_to_global_3d(box, batch_cams[c]));
+                global_3d.push_back(project_to_global_3d(box, batch_cams[c]));
             }
         }
-        
-        std::vector<Object3D> spatial_fused = apply_3d_wbf(local_3d);
-        
-        tracker.update_measurements(spatial_fused);
     }
+
+    // 2. Apply 3D Weighted Box Fusion across ALL cameras simultaneously
+    // This fuses overlapping FOV detections (e.g. FRONT and FRONT_LEFT) before updating the tracker
+    std::vector<Object3D> spatial_fused = apply_3d_wbf(global_3d);
+
+    // 3. Update tracker exactly once per sweep with the globally fused measurements
+    tracker.update_measurements(spatial_fused);
 
     double fusion_elapsed = get_thread_time_ms() - fusion_start;
     in_fusion_mutex.lock();
@@ -2458,24 +2483,22 @@ double run_evaluation_pipeline(
 }
 
 bool run_multicam(tflite::Interpreter * interpreter, int model_mode, char * dataset_path, char * fusion_mode, char * result_path, std::vector<int> exec_times) {
-    
     // Set CPU affinity to exclude cores 0-3
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
     long num_cores = sysconf(_SC_NPROCESSORS_ONLN);
-    for (int i = 0; i < num_cores; i++) {
-        if (i != 0 && i != 1 && i != 2 && i != 3) {
-            CPU_SET(i, &cpuset);
-        }
+
+    for (int i = 4; i < num_cores; i++) {
+        CPU_SET(i, &cpuset);
     }
+
     if (CPU_COUNT(&cpuset) == 0) {
         std::cerr << "ERROR: No available CPU cores (Total cores <= 4). Cannot exclude 0-3.\n";
         return false;
     }
     
-    pthread_t current_thread = pthread_self();
-    if (pthread_setaffinity_np(current_thread, sizeof(cpu_set_t), &cpuset) != 0) {
-        std::cerr << "ERROR: Failed to set thread affinity.\n";
+    if(pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset) != 0) {
+        std::cerr << "ERROR: Failed to set thread affinity for main thread.\n";
         return false;
     }
 
@@ -2497,7 +2520,7 @@ bool run_multicam(tflite::Interpreter * interpreter, int model_mode, char * data
 
     std::string str_fusion_mode(fusion_mode);
 
-    if(model_mode != 1){
+    if(model_mode != 1 && model_mode != 2 && model_mode != 3){
         interpreter->SetScoreThreshold(static_cast<float>(Params::score_threshold));
         interpreter->SetIouThreshold(static_cast<float>(Params::iou_threshold));
     }

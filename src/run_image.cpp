@@ -25,7 +25,7 @@
 
 #include <opencv2/opencv.hpp>
 #include <dirent.h>
-#include <jpeglib.h>
+#include <turbojpeg.h>
 #include <json-c/json.h>
 
 // --- Global Statistics ---
@@ -60,12 +60,9 @@ public:
                 // Set Affinity once per worker thread
                 cpu_set_t cpuset;
                 CPU_ZERO(&cpuset);
-                for(int cpu : cpus) {
-                    CPU_SET(cpu, &cpuset);
-                }
-                pthread_t current_thread = pthread_self();
-                if(pthread_setaffinity_np(current_thread, sizeof(cpu_set_t), &cpuset) != 0) {
-                    std::cerr << "ERROR: Failed to set thread affinity in ThreadPool.\n";
+                for(int cpu : cpus) { CPU_SET(cpu, &cpuset); }
+                if(pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset) != 0) {
+                    std::cerr << "ERROR: Failed to set thread affinity for thread pool.\n";
                 }
 
                 while(true) {
@@ -145,46 +142,81 @@ static void preprocess_task(tflite::Interpreter * interpreter, int model_mode, s
 
     double preprocess_start = get_thread_time_ms();
 
-    struct jpeg_decompress_struct cinfo;
-    struct jpeg_error_mgr jerr;
+    // OPTIMIZATION 1: Thread-local buffers to eliminate dynamic memory allocation per frame
+    thread_local std::vector<uint8_t> file_buf;
+    thread_local std::vector<uint8_t> rgb_buf;
 
-    cinfo.err = jpeg_std_error(&jerr);
-    jpeg_create_decompress(&cinfo);
-
+    // OPTIMIZATION 2: Read entire file to memory to minimize disk I/O bottlenecks
     FILE * fp = fopen(filename.c_str(), "rb");
     if(fp == NULL) {
         std::cerr << "ERROR: Cannot open the image: " << filename << std::endl;
-        jpeg_destroy_decompress(&cinfo);
         return; 
     }
-    jpeg_stdio_src(&cinfo, fp);
 
-    jpeg_read_header(&cinfo, TRUE);
+    fseek(fp, 0, SEEK_END);
+    long file_size = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
 
-    cinfo.out_color_space = JCS_RGB;
-    cinfo.output_components = 3;
+    if (file_size <= 0) {
+        std::cerr << "ERROR: File size is invalid for: " << filename << std::endl;
+        fclose(fp);
+        return;
+    }
 
-    jpeg_start_decompress(&cinfo);
+    // Resize file buffer if the current file is larger than the previous ones
+    if (file_buf.size() < file_size) {
+        file_buf.resize(file_size);
+    }
+    
+    size_t bytes_read = fread(file_buf.data(), 1, file_size, fp);
+    fclose(fp);
 
-    // Get the image data
-    int img_height = cinfo.output_height;
-    int img_width = cinfo.output_width;
-    int row_stride = cinfo.output_width * 3;
+    if (bytes_read != file_size) {
+        std::cerr << "ERROR: Failed to read the entire file for: " << filename << std::endl;
+        return;
+    }
+
+    // Initialize TurboJPEG Decompressor
+    tjhandle tjInstance = tjInitDecompress();
+    if (tjInstance == NULL) {
+        std::cerr << "ERROR: TurboJPEG init failed: " << tjGetErrorStr2(NULL) << std::endl;
+        return;
+    }
+
+    int img_width, img_height, jpegSubsamp, jpegColorspace;
+
+    // Read JPEG header from the memory buffer
+    if (tjDecompressHeader3(tjInstance, file_buf.data(), file_size, &img_width, &img_height, &jpegSubsamp, &jpegColorspace) < 0) {
+        std::cerr << "ERROR: TurboJPEG header decoding failed for: " << filename << ". Error: " << tjGetErrorStr2(tjInstance) << std::endl;
+        tjDestroy(tjInstance);
+        return;
+    }
+
+    if (img_width <= 0 || img_height <= 0) {
+        std::cerr << "ERROR: JPEG dimensions invalid for: " << filename << std::endl;
+        tjDestroy(tjInstance);
+        return;
+    }
 
     // Direct access to vector is safe because each task accesses a unique cur_batch index
     img_heights[cur_batch] = img_height;
     img_widths[cur_batch] = img_width;
 
-    uint8_t * rgb_buf_ptr = (uint8_t *)malloc(sizeof(uint8_t) * img_height * img_width * 3);
-    while(cinfo.output_scanline < cinfo.output_height){
-        uint8_t * rowptr = rgb_buf_ptr + row_stride * cinfo.output_scanline; 
-        jpeg_read_scanlines(&cinfo, &rowptr, 1);
+    // Resize RGB buffer if needed to hold the decompressed image
+    size_t required_rgb_size = img_width * img_height * 3;
+    if (rgb_buf.size() < required_rgb_size) {
+        rgb_buf.resize(required_rgb_size);
     }
 
-    jpeg_finish_decompress(&cinfo);
-    jpeg_destroy_decompress(&cinfo);
+    // Decode the JPEG image directly into the RGB buffer
+    if (tjDecompress2(tjInstance, file_buf.data(), file_size, rgb_buf.data(), img_width, 0, img_height, TJPF_RGB, TJFLAG_FASTDCT) < 0) {
+        std::cerr << "ERROR: TurboJPEG decompression failed for: " << filename << ". Error: " << tjGetErrorStr2(tjInstance) << std::endl;
+        tjDestroy(tjInstance);
+        return;
+    }
 
-    fclose(fp);
+    // Cleanup Decompressor
+    tjDestroy(tjInstance);
 
     // Write json images
     json_object * json_image = json_object_new_object();
@@ -198,9 +230,10 @@ static void preprocess_task(tflite::Interpreter * interpreter, int model_mode, s
     json_object_array_add(json_images, json_image);
     in_preprocess_mutex.unlock();
 
-    preprocess(interpreter, model_mode, rgb_buf_ptr, img_height, img_width, cur_batch);
+    // Pass the raw pointer of the thread-local vector to the preprocess function
+    preprocess(interpreter, model_mode, rgb_buf.data(), img_height, img_width, cur_batch);
 
-    free(rgb_buf_ptr);
+    // Dynamic malloc/free for rgb_buf_ptr is removed because we use thread-local std::vector
 
     double preprocess_elapsed = get_thread_time_ms() - preprocess_start;
     in_preprocess_mutex.lock();
@@ -692,31 +725,23 @@ static void postprocess_task(tflite::Interpreter * interpreter, int model_mode, 
 
 
 static void infer(tflite::Interpreter * interpreter, int model_mode, char * directory_path, json_object * json_images, json_object * json_annotations, int batch_size){
-    // Set Affinity for the Inference Thread (Cores 4+)
+    // Set CPU affinity to exclude cores 0-3
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
     long num_cores = sysconf(_SC_NPROCESSORS_ONLN);
-    for (int i = 0; i < num_cores; i++) {
-        if (i != 0 && i != 1 && i != 2 && i != 3) {
-            CPU_SET(i, &cpuset);
-        }
+
+    for (int i = 4; i < num_cores; i++) {
+        CPU_SET(i, &cpuset);
     }
+
     if (CPU_COUNT(&cpuset) == 0) {
         std::cerr << "ERROR: No available CPU cores (Total cores <= 4). Cannot exclude 0-3.\n";
         return;
     }
-    pthread_t current_thread = pthread_self();
-    if (pthread_setaffinity_np(current_thread, sizeof(cpu_set_t), &cpuset) != 0) {
-        std::cerr << "ERROR: Failed to set thread affinity.\n";
+    
+    if(pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset) != 0) {
+        std::cerr << "ERROR: Failed to set thread affinity for main thread.\n";
         return;
-    } else {
-        std::cout << "INFO: Affinity set to Cores: ";
-        for (int i = 0; i < CPU_SETSIZE; i++) {
-            if (CPU_ISSET(i, &cpuset)) {
-                printf("%d,", i);
-            }
-        }
-        printf("\n");
     }
 
     // Initialize Thread Pools

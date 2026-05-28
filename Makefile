@@ -75,7 +75,7 @@ ifeq ($(ARCH), arm64)
                $(MACCEL_LIBS) \
                -lhailort \
                -lais_client -lfastcvopt -lqcarcam_client \
-               -ljson-c -ljpeg \
+               -ljson-c -lturbojpeg \
                -lgstreamer-1.0 -lgstapp-1.0 -lgobject-2.0 -lglib-2.0 -lgstvideo-1.0 \
                -lwayland-client -lwayland-egl -lEGL -lGLESv2 \
                -lopencv_core -lopencv_imgproc -lopencv_dnn -lopencv_imgcodecs -lopencv_calib3d
@@ -115,7 +115,7 @@ else ifeq ($(ARCH), x64)
                -ltensorflowlite -ltensorflowlite_gpu_delegate -ltensorflowlite_hexagon_delegate \
                $(MACCEL_LIBS) \
                -lhailort \
-               -ljson-c -ljpeg \
+               -ljson-c -lturbojpeg \
                -lwayland-client -lwayland-egl -lEGL -lGLESv2
 
     INCS := -I$(INC_DIR) $(shell pkg-config --cflags opencv4 gstreamer-1.0 gstreamer-app-1.0 gstreamer-video-1.0)
