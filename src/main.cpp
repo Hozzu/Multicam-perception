@@ -14,6 +14,7 @@ bool run_image(tflite::Interpreter * interpreter, int model_mode, std::vector<st
 bool run_video(tflite::Interpreter * interpreter, int model_mode, std::vector<std::string> * labels, char * video_path, int batch_size = 1);
 bool run_demo(tflite::Interpreter * interpreter1, tflite::Interpreter * interpreter2, int model_mode, std::vector<std::string> * labels_arg, char * video_path, int batch_size = 1);
 bool run_multicam(tflite::Interpreter * interpreter, int model_mode, char * dataset_path, char * fusion_mode, char * result_path, std::vector<int> exec_times);
+bool run_multicam_demo(tflite::Interpreter * interpreter, int model_mode, char * dataset_path, char * fusion_mode, char * output_video_path, std::vector<int> exec_times);
 
 int main(int argc, char * argv[]){
     int model_mode; // 1 for ssd_mobilenet
@@ -64,13 +65,21 @@ int main(int argc, char * argv[]){
         std::cout << "[ACCELERATOR] specifies the accelerator to run the inference. CPU, GPU, DSP is supported.\n";
         std::cout << "[DATASET_DIR] is the root directory of the nuScenes dataset (e.g., v1.0-mini).\n";
         std::cout << "[FUSION_MODE] is either 'sequential' or 'simultaneous' (Late Fusion strategy).\n";
-        std::cout << "[RESULT] is path of the output 3D world representation json file.\n";
+        std::cout << "[RESULT] is path of the output 3D world representation json file.\n\n";
+
+        std::cout << "Usage: pkshin_detect multicam_demo [MODEL] [ACCELERATOR] [DATASET_DIR] [FUSION_MODE] [VIDEO_OUT]\n";
+        std::cout << "Multicam demo mode runs 3D Object Detection using synchronized multi-camera dataset and saves visualization to a video file.\n";
+        std::cout << "[MODEL] is path of the model file.\n";
+        std::cout << "[ACCELERATOR] specifies the accelerator to run the inference. CPU, GPU, DSP is supported.\n";
+        std::cout << "[DATASET_DIR] is the root directory of the nuScenes dataset (e.g., v1.0-mini).\n";
+        std::cout << "[FUSION_MODE] is either 'sequential' or 'simultaneous' (Late Fusion strategy).\n";
+        std::cout << "[VIDEO_OUT] is path of the output mp4 video file.\n";
         return 0;
     }
 
     // Argument error checking
-    if(strcmp(argv[1], "camera") != 0 && strcmp(argv[1], "image") != 0 && strcmp(argv[1], "video") != 0 && strcmp(argv[1], "demo") != 0 && strcmp(argv[1], "multicam") != 0){
-        std::cerr << "ERROR: The fisrt argument must be either camera, image, video, demo, or multicam\n";
+    if(strcmp(argv[1], "camera") != 0 && strcmp(argv[1], "image") != 0 && strcmp(argv[1], "video") != 0 && strcmp(argv[1], "demo") != 0 && strcmp(argv[1], "multicam") != 0 && strcmp(argv[1], "multicam_demo") != 0){
+        std::cerr << "ERROR: The fisrt argument must be either camera, image, video, demo, multicam, or multicam_demo\n";
         std::cerr << "Type -help to see the guide\n";
         return 1;
     }
@@ -101,6 +110,12 @@ int main(int argc, char * argv[]){
 
     if(strcmp(argv[1], "multicam") == 0 && argc < 7){
         std::cerr << "ERROR: The multicam mode requires at least 7 arguments\n";
+        std::cerr << "Type -help to see the guide\n";
+        return 1;
+    }
+
+    if(strcmp(argv[1], "multicam_demo") == 0 && argc < 7){
+        std::cerr << "ERROR: The multicam_demo mode requires at least 7 arguments\n";
         std::cerr << "Type -help to see the guide\n";
         return 1;
     }
@@ -232,7 +247,7 @@ interpreter->SetOutputs(current_outputs);*/
         else if( strcmp(argv[3], "GPU") == 0 || strcmp(argv[3], "gpu") == 0 ){
             TfLiteGpuDelegateOptionsV2 gpu_delegate_options = TfLiteGpuDelegateOptionsV2Default();
             gpu_delegate_options.inference_preference = TFLITE_GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED;
-	        #if defined(__aarch64__)
+            #if defined(__aarch64__)
                 // SA8195P has a bug on OpenCL. Use OpenGL instead.
                 gpu_delegate_options.experimental_flags |= TFLITE_GPU_EXPERIMENTAL_FLAGS_GL_ONLY;
                 std::cout << "INFO: ARM64 architecture detected. Enabling GL_ONLY flag for GPU delegate.\n";
@@ -575,6 +590,75 @@ interpreter->SetOutputs(current_outputs);*/
         }
         
         return run_multicam(interpreter.get(), model_mode, argv[4], argv[5], argv[6], exec_times);
+    }
+    else if(strcmp(argv[1], "multicam_demo") == 0){
+        // Parse fusion mode
+        std::string fusion_mode(argv[5]);
+        if(fusion_mode != "sequential" && fusion_mode != "simultaneous") {
+            std::cerr << "ERROR: Fusion mode must be 'sequential' or 'simultaneous'\n";
+            return 1;
+        }
+
+        // Parse exec_times (optional)
+        std::vector<int> exec_times;
+        if (argc > 7) {
+            std::string exec_times_arg(argv[7]);
+            std::stringstream ss(exec_times_arg);
+            std::string token;
+            
+            while (std::getline(ss, token, ',')) {
+                size_t start = token.find_first_not_of(" \t\r\n");
+                if (start == std::string::npos) {
+                    continue;
+                }
+                size_t end = token.find_last_not_of(" \t\r\n");
+                
+                token = token.substr(start, end - start + 1);
+                if (token.empty()) continue; 
+
+                try {
+                    size_t pos;
+                    int val = std::stoi(token, &pos);
+                    
+                    if (pos != token.length()) {
+                        std::cerr << "ERROR: Invalid characters trailing in exec_times argument: '" << token << "'\n";
+                        return 1;
+                    } 
+                    
+                    if (val < 0) {
+                        std::cerr << "ERROR: Expected positive natural number, but got: '" << val << "'\n";
+                        return 1;
+                    }
+                    
+                    exec_times.push_back(val);
+                    
+                } catch (const std::invalid_argument& e) {
+                    std::cerr << "ERROR: Invalid number format in exec_times argument: '" << token << "'\n";
+                    return 1;
+                } catch (const std::out_of_range& e) {
+                    std::cerr << "ERROR: Number out of range in exec_times argument: '" << token << "'\n";
+                    return 1;
+                }
+            }
+            
+            if (exec_times.size() != 4) {
+                std::cerr << "ERROR: exec_times must contain exactly 4 values. Found " << exec_times.size() << ".\n";
+                return 1;
+            }
+        }
+        
+        std::cout << "INFO: Running Multi-Camera Demo\n";
+        std::cout << "INFO: Target Fusion Mode: " << fusion_mode << "\n";
+        
+        if (!exec_times.empty()) {
+            std::cout << "INFO: Optional exec_times:";
+            for(size_t i = 0; i < exec_times.size(); i++){
+                std::cout << " " << exec_times[i];
+            }
+            std::cout << "\n";
+        }
+        
+        return run_multicam_demo(interpreter.get(), model_mode, argv[4], argv[5], argv[6], exec_times);
     }
 
     return 0;

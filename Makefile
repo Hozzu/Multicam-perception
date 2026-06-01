@@ -26,7 +26,8 @@ SRCS_DETECT := $(SRC_DIR)/main.cpp \
                $(SRC_DIR)/run_camera.cpp \
                $(SRC_DIR)/run_video.cpp \
                $(SRC_DIR)/run_demo.cpp \
-               $(SRC_DIR)/run_multicam.cpp
+               $(SRC_DIR)/run_multicam.cpp \
+               $(SRC_DIR)/run_multicam_demo.cpp
 
 # Source file list for the mAP calculators
 SRCS_MAP_COCO := $(SRC_DIR)/cal_mAP_coco.cpp
@@ -78,7 +79,7 @@ ifeq ($(ARCH), arm64)
                -ljson-c -lturbojpeg \
                -lgstreamer-1.0 -lgstapp-1.0 -lgobject-2.0 -lglib-2.0 -lgstvideo-1.0 \
                -lwayland-client -lwayland-egl -lEGL -lGLESv2 \
-               -lopencv_core -lopencv_imgproc -lopencv_dnn -lopencv_imgcodecs -lopencv_calib3d
+               -lopencv_core -lopencv_imgproc -lopencv_dnn -lopencv_imgcodecs -lopencv_calib3d -lopencv_videoio
 
     INCS := -I$(INC_DIR)
     LIBS := -L$(LIB_DIR)
