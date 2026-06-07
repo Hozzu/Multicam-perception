@@ -2999,11 +2999,7 @@ bool run_multicam_demo(
         }
 
         auto invoke_start = std::chrono::steady_clock::now();
-        if(frame_idx == 0){
-            if(interpreter->Invoke(true, exec_times) != kTfLiteOk) { break; }
-        } else {
-            if(interpreter->Invoke(true) != kTfLiteOk) { break; }
-        }
+        if(interpreter->Invoke(true, exec_times) != kTfLiteOk) { break; }
         auto infer_elapsed = std::chrono::steady_clock::now() - invoke_start;
         sum_infer_time += std::chrono::duration_cast<std::chrono::microseconds>(infer_elapsed).count() / 1000.0;
 

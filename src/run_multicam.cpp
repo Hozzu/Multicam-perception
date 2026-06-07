@@ -134,7 +134,9 @@ static double sum_fusion_time = 0.0;
 
 static unsigned int num_turnaround = 0;
 static double sum_turnaround = 0.0;
+static double sum_sq_turnaround = 0.0;
 static double max_turnaround = 0.0;
+static double sum_sq_max_turnaround = 0.0;
 static double theoretical_max_time = 0.0;
 
 static std::mutex in_preprocess_mutex;
@@ -159,7 +161,9 @@ static void reset_global_stats() {
       sum_fusion_time = 0.0;
       num_turnaround = 0;
       sum_turnaround = 0.0;
+      sum_sq_turnaround = 0.0;
       max_turnaround = 0.0;
+      sum_sq_max_turnaround = 0.0;
 }
 
 // ============================================================================
@@ -2385,12 +2389,7 @@ double run_evaluation_pipeline(
             }
 
             auto invoke_start = std::chrono::steady_clock::now();
-            if(frame_idx == 0){
-                  if(interpreter->Invoke(true, exec_times) != kTfLiteOk) { break; }
-            }
-            else{
-                  if(interpreter->Invoke(true) != kTfLiteOk) { break; }
-            }
+            if(interpreter->Invoke(true, exec_times) != kTfLiteOk) { break; }
             auto infer_elapsed = std::chrono::steady_clock::now() - invoke_start;
             sum_infer_time += std::chrono::duration_cast<std::chrono::microseconds>(infer_elapsed).count() / 1000.0;
 
@@ -2417,8 +2416,15 @@ double run_evaluation_pipeline(
 
             post_pool.wait_all();
 
-            max_turnaround += interpreter->GetMaxTurnAroundTime();
-            sum_turnaround += interpreter->GetSumTurnAroundTime();
+            double current_max_turnaround = interpreter->GetMaxTurnAroundTime();
+            double current_sum_turnaround = interpreter->GetSumTurnAroundTime();
+
+            max_turnaround += current_max_turnaround;
+            sum_sq_max_turnaround += (current_max_turnaround * current_max_turnaround);
+
+            sum_turnaround += current_sum_turnaround;
+            sum_sq_turnaround += (current_sum_turnaround * current_sum_turnaround);
+
             theoretical_max_time += interpreter->GetTheoreticalMaxTime();
             num_turnaround++;
 
@@ -2482,10 +2488,38 @@ double run_evaluation_pipeline(
             double avg_infer_per_data = (num_preproces > 0) ? (sum_infer_time / num_preproces) : 0.0;
             double avg_post_per_data = (num_preproces > 0) ? (sum_postprocess_time / num_preproces) : 0.0;
             double avg_fusion_per_data = (num_preproces > 0) ? (sum_fusion_time / num_preproces) : 0.0;
-            double avg_turnaround_per_data = (num_turnaround > 0 && actual_batch_size > 0) ? ((sum_turnaround / num_turnaround) / actual_batch_size) : 0.0;
-            double max_turnaround_per_batch = (num_turnaround > 0 ) ? (max_turnaround / num_turnaround) : 0.0;
-            double max_turnaround_per_data = (num_turnaround > 0 ) ? (max_turnaround / num_turnaround / actual_batch_size) : 0.0;
-            double theoretical_turnaround_per_batch = (num_turnaround > 0 ) ? (theoretical_max_time / num_turnaround) : 0.0;
+            
+            // Initialize variables for mean, variance, and standard deviation
+            double avg_turnaround_per_data = 0.0;
+            double var_turnaround_per_data = 0.0;
+            double stddev_turnaround_per_data = 0.0;
+            
+            double max_turnaround_per_batch = 0.0;
+            double var_max_turnaround_per_batch = 0.0;
+            double stddev_max_turnaround_per_batch = 0.0;
+            
+            double max_turnaround_per_data = 0.0;
+            double theoretical_turnaround_per_batch = (num_turnaround > 0) ? (theoretical_max_time / num_turnaround) : 0.0;
+
+            if (num_turnaround > 0 && actual_batch_size > 0) {
+                  // 1. Calculations for avg_turnaround_per_data and its variance/stddev
+                  double mean_sum_turnaround = sum_turnaround / num_turnaround;
+                  avg_turnaround_per_data = mean_sum_turnaround / actual_batch_size;
+                  
+                  double var_sum_turnaround = (sum_sq_turnaround / num_turnaround) - (mean_sum_turnaround * mean_sum_turnaround);
+                  // Apply Var(X/c) = Var(X) / c^2 for per_data variance
+                  var_turnaround_per_data = std::max(0.0, var_sum_turnaround / (actual_batch_size * actual_batch_size)); 
+                  stddev_turnaround_per_data = std::sqrt(var_turnaround_per_data);
+
+                  // 2. Calculations for max_turnaround_per_batch and its variance/stddev
+                  max_turnaround_per_batch = max_turnaround / num_turnaround;
+                  
+                  double var_max_turnaround = (sum_sq_max_turnaround / num_turnaround) - (max_turnaround_per_batch * max_turnaround_per_batch);
+                  var_max_turnaround_per_batch = std::max(0.0, var_max_turnaround); // Ensure non-negative from float precision
+                  stddev_max_turnaround_per_batch = std::sqrt(var_max_turnaround_per_batch);
+                  
+                  max_turnaround_per_data = max_turnaround_per_batch / actual_batch_size;
+            }
 
             std::cout << std::fixed << std::setprecision(3);
             std::cout << "Total items: " << num_preproces << "\n";
@@ -2493,14 +2527,19 @@ double run_evaluation_pipeline(
             std::cout << "Average infer time:\t\t" << avg_infer_per_data << " ms\n";
             std::cout << "Average postprocess time:\t" << avg_post_per_data << " ms\n";
             std::cout << "Average fusion time:\t\t" << avg_fusion_per_data << " ms\n";
-            std::cout << "Average Turnaround time:\t" << avg_turnaround_per_data << " ms\n";
-            std::cout << "Maximum Turnaround time:\t" << max_turnaround_per_batch << " ms\n";
+            
+            // Print Turnaround statistics including Variance and Standard Deviation
+            std::cout << "Average Turnaround time:\t" << avg_turnaround_per_data 
+                      << " ms (StdDev: " << stddev_turnaround_per_data << ")\n";
+            std::cout << "Maximum Turnaround time:\t" << max_turnaround_per_batch 
+                      << " ms (StdDev: " << stddev_max_turnaround_per_batch << ")\n";
+                      
             std::cout << "Theoretical Turnaround time:\t" << theoretical_turnaround_per_batch << " ms\n";
             std::cout << "Turnaround time for each data:\t" << max_turnaround_per_data << " ms\n";  
             std::cout << "Application latency:\t\t" << app_latency / 1000.0 << " s\n";
 
             std::ofstream fout("result.txt", std::ios::app);
-            fout << avg_turnaround_per_data << " " << max_turnaround_per_batch << " " << theoretical_turnaround_per_batch << " "
+            fout << avg_turnaround_per_data << " " << stddev_turnaround_per_data << " " << max_turnaround_per_batch << " " << stddev_max_turnaround_per_batch << " " << theoretical_turnaround_per_batch << " "
                  << app_latency / 1000.0 << " "
                  << metrics.mAP << " " << metrics.NDS << " "
                  << metrics.mATE << " " << metrics.mASE << " "  
