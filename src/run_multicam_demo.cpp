@@ -25,6 +25,10 @@
 #include <EGL/egl.h>
 #include <GLES2/gl2.h>
 
+// GStreamer Headers for Video Encoding
+#include <gst/gst.h>
+#include <gst/app/gstappsrc.h>
+
 // OpenCV Headers
 #include <opencv2/opencv.hpp>
 #include <opencv2/calib3d.hpp>
@@ -69,96 +73,117 @@ static void signal_handler(int signum) {
 
 namespace Params {
     // 1. 2D Detection & NMS
-    inline double score_threshold = 0.2;
-    inline double iou_threshold = 0.7;
+    inline double score_threshold = 0.1;
+    inline double iou_threshold = 0.5;
     
     // 2. Tracker Lifecycle
-    // Locked to realistic lifespans to prevent ghost tracks and maintain strict association
-    inline double init_track_score = 0.7;
+    inline double init_track_score = 0.9;
     inline int tentative_hit_thresh = 3;
-    inline int del_tentative_thresh = 2;
-    inline int del_confirmed_thresh = 30;           // 2.5 seconds max memory at 12 FPS
+    inline int del_tentative_thresh = 3; 
+    inline int del_confirmed_thresh = 35;            
     inline double invisible_penalty = 0.95;  
     
     // 3. Kalman Filter: Initial Covariance Matrix & Bounds
-    inline double cov_p_init = 0.1;
+    inline double cov_p_init = 0.15;
     inline double cov_v_init = 25.0;        
-    inline double cov_p_delay = 5.0;
-    inline double cov_v_delay = 10.0;
-    inline double max_cov_limit = 300.0;            // Locked from previous optimal tuning
-    inline double min_cov_limit = 0.01;        
-    inline double nan_cov_fallback = 10.0;    
-    
+    inline double min_cov_limit = 0.001;        
+
     // 4. Kalman Filter: Continuous Process Noise (Q)
-    inline double noise_a_base = 10.0;              // Allows up to ~0.8G physical acceleration
-    inline double noise_a_speed = 0.0005;
+    inline double noise_a_base = 4.0;                
+    inline double noise_a_speed = 0.01;
     inline double noise_a_ped = 2.0;        
     inline double noise_a_cone = 0.01;
-    inline double noise_a_parked = 0.005;
+    inline double noise_a_parked = 0.001;
     
     // 5. Dynamics, Speed Limits & Damping
-    inline double damp_moving = 0.98;               // Realistic coasting momentum at 12 FPS
-    inline double damp_parked = 0.3;        
-    inline double max_speed_default = 35.0;         // ~126 km/h cap
-    inline double max_speed_ped = 4.0;
-    inline double max_speed_bike = 15.0;
+    inline double damp_moving = 0.98;                
+    inline double damp_parked = 0.2;        
+    inline double max_speed_default = 35.0;         
+    inline double max_speed_ped = 2.0;
+    inline double max_speed_bike = 10.0;
     inline double max_speed_static = 0.5;
-    inline double static_speed_thresh = 0.6;
-    inline double max_accel = 15.0;          
+    inline double static_speed_thresh = 1.0;
     
     // 6. Yaw (Heading) Update Mechanism
     inline double yaw_speed_thresh = 2.0;  
     inline double yaw_alpha = 0.05;            
     
     // 7. Kalman Filter: Measurement Noise (R)
-    inline double var_depth_base = 1.5;
-    inline double var_depth_scale = 10.0;
-    inline double var_bearing_base = 0.02;
+    inline double var_depth_base = 0.5;
+    inline double var_depth_scale = 15.0;
+    inline double var_bearing_base = 0.05;
     inline double var_bearing_scale = 50.0;
     inline double conf_scale = 5.0;
-    inline double proj_scale = 5.0;
-    inline double diag_load = 0.01;  
-    inline double ema_alpha = 0.3;                  // Moderately fast scale adaptation
+    inline double proj_scale = 6.0;
+    inline double ema_alpha = 0.2;                  
     
     // 8. Track-to-Measurement Matching
-    inline double dyn_match_base = 4.0;
-    inline double dyn_match_dist_scale = 0.08;
-    inline double dyn_match_ped_mult = 1.0;
-    inline double maha_thresh = 9.21;               // Statistically precise 99% Chi-Square boundary
-    inline double eval_maha_cov_add = 0.5;  
+    inline double dyn_match_base = 5.0;
+    inline double dyn_match_dist_scale = 0.15;
+    inline double dyn_match_ped_mult = 0.6;
+    inline double maha_thresh = 9.21;                
+    inline double eval_maha_cov_add = 0.3;  
     
     // 9. 3D Projection, Truncation & Edge Cases
-    inline double min_focal_length = 1.0;
-    inline double truncation_margin_px = 0.0;
-    inline double min_box_dim_px = 5.0;
+    inline double truncation_margin_px = 1.0;
     inline double depth_ground_weight = 15.0;
-    inline double fov_edge_margin = 0.02;
-    inline double depth_max = 160.0;
-    inline double depth_min = 0.1;
-    inline double fov_edge_penalty = 0.7;           // Reasonable penalty that doesn't blind the tracker
-    inline double dist_penalty_div = 100.0;
-    inline double depth_ratio_max = 1.3;
+    inline double fov_edge_margin = 0.05;
+    inline double depth_max = 140.0;
+    inline double fov_edge_penalty = 0.7;            
+    inline double dist_penalty_div = 250.0; 
+    inline double depth_ratio_max = 1.2;
     inline double depth_ratio_min = 0.5;
     
     // 10. 3D Weighted Box Fusion (Spatial Fusion)
-    inline double wbf_dyn_base = 1.5;               // Safely preserves distinct adjacent vehicles
+    inline double wbf_dyn_base = 2.0;                
     inline double wbf_dyn_dist_scale = 0.1;  
-    inline double wbf_dyn_ped_mult = 0.3;
+    inline double wbf_dyn_ped_mult = 0.2;
 
     // 11. Temporal & Stability Bounds
-    inline double dt_delay_thresh = 0.5;          
-    inline double default_dt = 0.083;
-    inline double target_dt = 0.5;                
-    inline double max_dt = 2.0;                    
-    inline double min_dt = 0.001;                 
-    inline double horizon_z_thresh = 0.0;           // Horizon projection trust expanded for distant objects
-    inline double min_dist_penalty = 0.01;          
-    inline double min_proj_confidence = 0.15;              
+    inline double default_dt = 0.05;
+    inline double target_dt = 0.4;                
+    inline double horizon_z_thresh = 0.0;            
+    inline double min_dist_penalty = 0.1;          
+    inline double min_proj_confidence = 0.15;
+    
+    // 12. Dynamic Scaling & Corner Case Physics Parameters
+    inline double len_ratio_min = 0.7;
+    inline double len_ratio_max = 4.0; 
+    inline double wbf_dyn_bike_mult = 1.5;
+    inline double min_cov_bound_base = 1.0;
+    inline double min_cov_bound_scale = 0.5;
+    inline double noise_a_heavy_mult = 0.6;
+    inline double noise_a_bike_mult = 1.5;
+    inline double yaw_speed_heavy_mult = 2.5;
+    inline double yaw_speed_bike_mult = 0.5;
+    inline double dyn_match_bike_mult = 1.0;
 
-    // 12. Visualization Parameters
+    // 13. Continuous Aspect-Ratio Aware Depth Compensation
+    // Replaced hard threshold with a blend range to prevent 3D positional snapping
+    inline double aspect_ratio_blend_start = 1.2;
+    inline double aspect_ratio_blend_end = 2.0;
+    inline double depth_weight_front_h = 0.7;
+    inline double depth_weight_side_h = 0.9;
+    inline double depth_weight_bike_h = 0.7;
+
+    // 14. Tracker Grace Period (Occlusion Tolerance)
+    inline int grace_hit_high = 15;
+    inline int grace_frames_high = 5;
+    inline int grace_hit_low = 7;
+    inline int grace_frames_low = 1;
+    inline double penalty_hard_floor = 0.5;
+
+    // 15. Heavy Vehicles (Bus, Truck, Trailer) Specific Physics
+    inline double heavy_depth_offset_front = 0.5; 
+    inline double heavy_depth_offset_side = 0.35; 
+    inline double max_speed_heavy = 20.0; 
+    inline double damp_heavy = 0.6; // Much stronger damping to prevent jitter-induced ghost velocity
+    inline double wbf_dyn_heavy_mult = 3.0;                
+
+    // 16. Visualization Parameters
     inline double render_score_threshold = 0.4; 
-    inline double bev_range_m = 60.0;               
-    inline int bev_img_size = 1080;                 
+    inline double bev_range_m = 60.0;                
+    inline int bev_img_size = 1080;                  
 }
 
 // Global Statistics for Tracking
@@ -592,9 +617,18 @@ static Eigen::Matrix2d calculate_measurement_covariance(const Object3D& meas) {
     R_rot << c, -s, 
              s,  c;
     
+    // Calculate base variances
     double var_depth = Params::var_depth_base + std::pow(dist_to_ego / std::max(0.1, Params::var_depth_scale), 2.0); 
     double var_bearing = Params::var_bearing_base + (dist_to_ego / std::max(0.1, Params::var_bearing_scale));
     
+    // Dynamically scale depth variance based on the object's length prior.
+    // Bound strictly using tuneable parameters to prevent covariance explosion or collapse.
+    double length_ratio = meas.l / 4.63;
+    if (length_ratio < Params::len_ratio_min) length_ratio = Params::len_ratio_min;
+    if (length_ratio > Params::len_ratio_max) length_ratio = Params::len_ratio_max;
+    
+    var_depth *= length_ratio; 
+
     double conf_scale = 1.0 + (1.0 - meas.score) * Params::conf_scale;
     double proj_scale = 1.0 + (1.0 - meas.proj_confidence) * Params::proj_scale; 
 
@@ -610,6 +644,47 @@ static Eigen::Matrix2d calculate_measurement_covariance(const Object3D& meas) {
 // ============================================================================
 //                                UTILITY FUNCTIONS
 // ============================================================================
+
+// Utility to bypass cv::imread codec issues on aarch64/embedded systems using TurboJPEG
+static cv::Mat read_jpeg_to_mat(const std::string& filename) {
+    FILE * fp = fopen(filename.c_str(), "rb");
+    if (fp == NULL) return cv::Mat();
+
+    fseek(fp, 0, SEEK_END);
+    long file_size = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+
+    if (file_size <= 0) {
+        fclose(fp);
+        return cv::Mat();
+    }
+
+    std::vector<uint8_t> file_buf(file_size);
+    if (fread(file_buf.data(), 1, file_size, fp) != static_cast<size_t>(file_size)) {
+        fclose(fp);
+        return cv::Mat();
+    }
+    fclose(fp);
+
+    tjhandle tjInstance = tjInitDecompress();
+    if (tjInstance == NULL) return cv::Mat();
+
+    int width, height, jpegSubsamp, jpegColorspace;
+    if (tjDecompressHeader3(tjInstance, file_buf.data(), file_size, &width, &height, &jpegSubsamp, &jpegColorspace) < 0) {
+        tjDestroy(tjInstance);
+        return cv::Mat();
+    }
+
+    cv::Mat img(height, width, CV_8UC3);
+    // Decode directly into OpenCV's native BGR format for seamless drawing
+    if (tjDecompress2(tjInstance, file_buf.data(), file_size, img.data, width, 0, height, TJPF_BGR, TJFLAG_FASTDCT) < 0) {
+        tjDestroy(tjInstance);
+        return cv::Mat();
+    }
+
+    tjDestroy(tjInstance);
+    return img;
+}
 
 // Official nuScenes 10 Classes Mapping & Priors (w, l, h)
 static std::map<int, std::vector<double>> class_priors = {
@@ -736,16 +811,24 @@ class MultiObjectTracker {
         }
 
         void predict(double dt) {
-            if (!std::isfinite(dt) || dt <= 0.0) dt = Params::min_dt; 
-            if (dt > Params::max_dt) dt = Params::max_dt; 
+            // Hardcoded min_dt to 0.001 and max_dt to 2.0
+            if (!std::isfinite(dt) || dt <= 0.0) dt = 0.001; 
+            if (dt > 2.0) dt = 2.0; 
             this->last_dt = dt;
 
-            if (dt > Params::dt_delay_thresh) {
-                errorCovPost.diagonal() << Params::cov_p_delay, Params::cov_p_delay, Params::cov_v_delay, Params::cov_v_delay; 
+            // Hardcoded delay values since they are mathematical fallbacks and have no tuning impact
+            if (dt > 0.5) {
+                errorCovPost.diagonal() << 5.0, 5.0, 10.0, 10.0; 
             }
 
             double dt_ratio = dt / Params::target_dt;
+            
+            // Heavy Vehicles get extreme damping to forcibly suppress velocity jitter 
+            // caused by continuous aspect-ratio updates
             double base_damp = (obj.attribute_name == "vehicle.parked") ? Params::damp_parked : Params::damp_moving;
+            if (class_id >= 1 && class_id <= 4) {
+                base_damp = Params::damp_heavy;
+            }
             double damp = std::pow(base_damp, dt_ratio);
 
             Eigen::Matrix4d transitionMatrix;
@@ -757,9 +840,12 @@ class MultiObjectTracker {
             double current_speed = std::hypot(statePost(2), statePost(3));
             double noise_a = Params::noise_a_base + (current_speed * Params::noise_a_speed); 
             
+            // Adjust acceleration noise tailored to real-world physics of the object class
             if (class_id == 5) noise_a = Params::noise_a_ped; 
             else if (class_id == 8 || class_id == 9) noise_a = Params::noise_a_cone; 
             else if (obj.attribute_name == "vehicle.parked") noise_a = Params::noise_a_parked; 
+            else if (class_id >= 1 && class_id <= 4) noise_a = Params::noise_a_base * Params::noise_a_heavy_mult; 
+            else if (class_id == 6 || class_id == 7) noise_a = Params::noise_a_base * Params::noise_a_bike_mult; 
 
             double dt2 = dt * dt;
             double dt3 = dt2 * dt / 2.0;
@@ -776,6 +862,7 @@ class MultiObjectTracker {
 
             double max_speed = Params::max_speed_default; 
             if (class_id == 5) max_speed = Params::max_speed_ped; 
+            else if (class_id >= 1 && class_id <= 4) max_speed = Params::max_speed_heavy; // Heavy vehicle speed cap
             else if (class_id == 7) max_speed = Params::max_speed_bike; 
             else if (class_id == 8 || class_id == 9) max_speed = Params::max_speed_static; 
             
@@ -816,7 +903,8 @@ class MultiObjectTracker {
             
             double det = S.determinant();
             if (std::abs(det) < 1e-06 || !std::isfinite(det)) {
-                S(0, 0) += Params::diag_load; S(1, 1) += Params::diag_load; 
+                // Hardcoded diag_load to 0.01 to avoid mathematically impossible inversions
+                S(0, 0) += 0.01; S(1, 1) += 0.01; 
             }
 
             Eigen::Matrix<double, 4, 2> K = errorCovPost * H_T * S.inverse();
@@ -827,9 +915,10 @@ class MultiObjectTracker {
             errorCovPost = (I - K * measurementMatrix) * errorCovPost;
             
             for (int i = 0; i < 4; ++i) {
-                if (errorCovPost(i, i) > Params::max_cov_limit) errorCovPost(i, i) = Params::max_cov_limit;
+                // Hardcoded the max limit to 300.0 and nan fallback to 10.0 as safety nets
+                if (errorCovPost(i, i) > 300.0) errorCovPost(i, i) = 300.0;
                 if (errorCovPost(i, i) < Params::min_cov_limit) errorCovPost(i, i) = Params::min_cov_limit;
-                if (!std::isfinite(errorCovPost(i, i))) errorCovPost(i, i) = Params::nan_cov_fallback;
+                if (!std::isfinite(errorCovPost(i, i))) errorCovPost(i, i) = 10.0;
             }
 
             if (std::isfinite(statePost(0)) && std::isfinite(statePost(1))) {
@@ -851,14 +940,28 @@ class MultiObjectTracker {
             obj.h = obj.h * (1.0 - time_adjusted_ema_alpha) + meas.h * time_adjusted_ema_alpha;
             
             double speed = std::hypot(obj.vx, obj.vy);
-            double target_yaw = meas.yaw;
             
-            if (speed > Params::yaw_speed_thresh && this->class_id >= 0 && this->class_id <= 7) {
+            double target_yaw = this->obj.yaw; 
+            double class_yaw_speed_thresh = Params::yaw_speed_thresh;
+
+            // Scale yaw speed threshold based on physics to prevent depth jitter twisting large vehicles
+            if (this->class_id >= 1 && this->class_id <= 4) {
+                class_yaw_speed_thresh *= Params::yaw_speed_heavy_mult; 
+            } else if (this->class_id == 6 || this->class_id == 7) {
+                class_yaw_speed_thresh *= Params::yaw_speed_bike_mult; 
+            }
+
+            if (speed > class_yaw_speed_thresh && this->class_id >= 0 && this->class_id <= 7) {
                 target_yaw = std::atan2(obj.vy, obj.vx);
-            } else if (this->class_id >= 0 && this->class_id <= 4) {
-                if (std::cos(target_yaw - this->obj.yaw) < 0.0) {
-                    target_yaw += M_PI; 
+            } else if (this->state == TENTATIVE && this->hit_count <= Params::tentative_hit_thresh + 1) {
+                target_yaw = meas.yaw;
+                if ((this->class_id >= 0 && this->class_id <= 4) || this->class_id == 6 || this->class_id == 7) {
+                    if (std::cos(target_yaw - this->obj.yaw) < 0.0) {
+                        target_yaw += M_PI; 
+                    }
                 }
+            } else {
+                target_yaw = this->obj.yaw; 
             }
 
             double time_adjusted_yaw_alpha = 1.0 - std::pow(1.0 - Params::yaw_alpha, dt_ratio);
@@ -902,20 +1005,20 @@ class MultiObjectTracker {
 
 public:
     void clear() {
-        std::lock_guard<std::mutex> lock(tracker_mutex);
+        std::lock_guard<std::mutex> tracker_lock(tracker_mutex);
         tracks.clear();
         next_id = 1;
         current_step = 0;
     }
 
     void predict_all(double dt) {
-        std::lock_guard<std::mutex> lock(tracker_mutex);
+        std::lock_guard<std::mutex> tracker_lock(tracker_mutex);
         current_step++; 
         for (auto& trk : tracks) trk.predict(dt);
     }
 
     void update_measurements(const std::vector<Object3D>& detections) {
-        std::lock_guard<std::mutex> lock(tracker_mutex);
+        std::lock_guard<std::mutex> tracker_lock(tracker_mutex);
         
         if (detections.empty()) return;
 
@@ -942,8 +1045,16 @@ public:
             double dist_to_ego = std::hypot(tracks[t].obj.x - tracks[t].obj.ego_translation.x(), 
                                             tracks[t].obj.y - tracks[t].obj.ego_translation.y());
             
-            double dyn_match_dist = std::max(Params::dyn_match_base, dist_to_ego * Params::dyn_match_dist_scale); 
+            // Dynamically scale dynamic match distance by bounded length prior. 
+            double class_l = tracks[t].obj.l;
+            double length_ratio = class_l / 4.63;
+            if (length_ratio < Params::len_ratio_min) length_ratio = Params::len_ratio_min;
+            if (length_ratio > Params::len_ratio_max) length_ratio = Params::len_ratio_max;
+
+            double dyn_match_dist = std::max(Params::dyn_match_base * length_ratio, dist_to_ego * Params::dyn_match_dist_scale); 
+            
             if (tracks[t].class_id == 5) dyn_match_dist *= Params::dyn_match_ped_mult;
+            else if (tracks[t].class_id == 6 || tracks[t].class_id == 7) dyn_match_dist *= Params::dyn_match_bike_mult; 
 
             for (size_t d = 0; d < detections.size(); ++d) {
                 if (tracks[t].class_id != detections[d].class_id) continue;
@@ -980,7 +1091,7 @@ public:
     }
 
     void cleanup_tracks() {
-        std::lock_guard<std::mutex> lock(tracker_mutex);
+        std::lock_guard<std::mutex> tracker_lock(tracker_mutex);
         tracks.erase(std::remove_if(tracks.begin(), tracks.end(), [](Track& t) { 
             if (!std::isfinite(t.obj.x) || !std::isfinite(t.obj.y)) return true;
             
@@ -994,17 +1105,43 @@ public:
     }
 
     std::vector<Object3D> get_active_tracks() {
-        std::lock_guard<std::mutex> lock(tracker_mutex);
+        std::lock_guard<std::mutex> tracker_lock(tracker_mutex);
         std::vector<Object3D> out;
         for (auto& trk : tracks) {
             if (trk.state == CONFIRMED) {
                 Object3D obj = trk.obj;
                 
+                // Softened Score Decay Strategy with dynamic tuning parameters
                 if (trk.invisible_count > 0) {
-                    obj.score *= std::pow(Params::invisible_penalty, trk.invisible_count);
+                    double penalty = Params::invisible_penalty;
+                    int grace_frames = 0;
+                    
+                    if (trk.hit_count >= Params::grace_hit_high) {
+                        grace_frames = Params::grace_frames_high;
+                    } else if (trk.hit_count >= Params::grace_hit_low) {
+                        grace_frames = Params::grace_frames_low;
+                    }
+                    
+                    int effective_invisible = std::max(0, trk.invisible_count - grace_frames);
+                    
+                    if (effective_invisible > 0) {
+                        double total_penalty = std::pow(penalty, effective_invisible);
+                        total_penalty = std::max(Params::penalty_hard_floor, total_penalty); 
+                        obj.score *= total_penalty;
+                    }
                 }
 
                 double speed = std::hypot(obj.vx, obj.vy);
+
+                // Hard speed limit clamp for heavy vehicles explicitly before output to secure mAVE
+                if (obj.class_id >= 1 && obj.class_id <= 4) {
+                    if (speed > Params::max_speed_heavy && speed > 0.0001) {
+                        obj.vx = (obj.vx / speed) * Params::max_speed_heavy;
+                        obj.vy = (obj.vy / speed) * Params::max_speed_heavy;
+                        speed = Params::max_speed_heavy; 
+                    }
+                }
+
                 if (obj.class_id >= 0 && obj.class_id <= 4) { 
                     obj.attribute_name = (speed > Params::static_speed_thresh) ? "vehicle.moving" : "vehicle.parked";
                 } else if (obj.class_id == 5) { 
@@ -1157,7 +1294,9 @@ static Object3D project_to_global_3d(const DetResult& box2d, const CamInfo& cam)
     double u_top = u_center;
     double v_top = safe_ymin;
 
-    double box_h_2d = std::max(Params::min_box_dim_px, safe_ymax - safe_ymin);
+    // Extract 2D width for aspect-ratio aware depth compensation
+    double box_w_2d = std::max(5.0, safe_xmax - safe_xmin);
+    double box_h_2d = std::max(5.0, safe_ymax - safe_ymin);
 
     if (!cam.distortion.empty() && cam.distortion.size() >= 4) {
         std::vector<cv::Point2f> src_pts = {
@@ -1181,11 +1320,61 @@ static Object3D project_to_global_3d(const DetResult& box2d, const CamInfo& cam)
         u_center = dst_pts[1].x; v_center = dst_pts[1].y;
         
         double undistorted_h = dst_pts[0].y - dst_pts[2].y;
-        box_h_2d = std::max(Params::min_box_dim_px, undistorted_h);
+        box_h_2d = std::max(5.0, undistorted_h);
     }
 
-    double f_y = std::max(Params::min_focal_length, cam.intrinsic(1, 1));
-    double depth_prior = (f_y * prior_h) / box_h_2d;
+    double f_x = std::max(1.0, cam.intrinsic(0, 0));
+    double f_y = std::max(1.0, cam.intrinsic(1, 1));
+    
+    // Calculate primary depth from height
+    double depth_prior_h = (f_y * prior_h) / box_h_2d;
+    double final_depth_prior = depth_prior_h;
+    double depth_offset = 0.0;
+
+    // Continuous Aspect-Ratio Aware Depth Compensation & Surface-to-Center Depth Offset Correction
+    // Bypassed if horizontally truncated to prevent infinitely small box_w causing infinite distance.
+    if (!is_truncated_horizontal) {
+        if (box2d.id >= 0 && box2d.id <= 4) {
+            double aspect_2d = box_w_2d / box_h_2d;
+            double prior_front_aspect = prior_w / prior_h;
+            
+            // Normalize aspect ratio to determine perspective (1.0 = Front/Rear, >>1.0 = Side)
+            double aspect_norm = aspect_2d / std::max(0.1, prior_front_aspect);
+            
+            // Compute a continuous blending weight (0.0 = Pure Front/Rear, 1.0 = Pure Side)
+            double side_blend_weight = (aspect_norm - Params::aspect_ratio_blend_start) / 
+                                       (std::max(0.1, Params::aspect_ratio_blend_end - Params::aspect_ratio_blend_start));
+            side_blend_weight = std::max(0.0, std::min(1.0, side_blend_weight));
+
+            // Estimate depth assuming we see the front/rear (width corresponds to prior_w)
+            double depth_prior_w_front = (f_x * prior_w) / box_w_2d;
+            // Estimate depth assuming we see the side (width corresponds to prior_l)
+            double depth_prior_w_side = (f_x * prior_l) / box_w_2d;
+
+            // Blend the width-based depth estimations
+            double blended_depth_w = (1.0 - side_blend_weight) * depth_prior_w_front + (side_blend_weight) * depth_prior_w_side;
+            
+            // Blend the height trust factor (Side views rely more on height because width stretches out)
+            double current_depth_weight_h = (1.0 - side_blend_weight) * Params::depth_weight_front_h + (side_blend_weight) * Params::depth_weight_side_h;
+
+            final_depth_prior = (depth_prior_h * current_depth_weight_h) + (blended_depth_w * (1.0 - current_depth_weight_h));
+
+            // Smooth Offset Blending for Heavy Vehicles
+            // Prevents massive mAVE spikes caused by discrete snapping of center offsets.
+            if (box2d.id >= 1 && box2d.id <= 4) {
+                double offset_front = prior_l * Params::heavy_depth_offset_front;
+                double offset_side = prior_w * Params::heavy_depth_offset_side;
+                depth_offset = (1.0 - side_blend_weight) * offset_front + (side_blend_weight) * offset_side;
+            }
+        } else if (box2d.id == 6 || box2d.id == 7) {
+            // Bicycles and motorcycles change aspect ratios drastically. Blend width to stabilize jitter.
+            double depth_prior_w = (f_x * prior_w) / box_w_2d;
+            final_depth_prior = (depth_prior_h * Params::depth_weight_bike_h) + (depth_prior_w * (1.0 - Params::depth_weight_bike_h));
+        }
+    }
+
+    // Apply the physical geometric offset before ground intersection calculations
+    final_depth_prior += depth_offset;
 
     Eigen::Matrix3d safe_intrinsic = cam.intrinsic;
     if (std::abs(safe_intrinsic.determinant()) < 1e-06) {
@@ -1195,7 +1384,7 @@ static Object3D project_to_global_3d(const DetResult& box2d, const CamInfo& cam)
     Eigen::Vector3d uv_center(u_center, v_center, 1.0);
     Eigen::Vector3d ray_cam_center = safe_intrinsic.inverse() * uv_center;
     ray_cam_center /= std::max(1e-06, ray_cam_center.z()); 
-    Eigen::Vector3d P_cam_prior = ray_cam_center * depth_prior;
+    Eigen::Vector3d P_cam_prior = ray_cam_center * final_depth_prior;
     Eigen::Vector3d P_ego_prior = cam.cam_to_ego.rotation * P_cam_prior + cam.cam_to_ego.translation;
 
     Eigen::Vector3d uv_bottom_vec(u_bottom, v_bottom, 1.0);
@@ -1212,33 +1401,33 @@ static Object3D project_to_global_3d(const DetResult& box2d, const CamInfo& cam)
         if (t_ground > 0.0) {
             Eigen::Vector3d P_bottom_ego = cam.cam_to_ego.translation + t_ground * ray_ego_bottom;
             P_ego_ground_center = P_bottom_ego + Eigen::Vector3d(0.0, 0.0, prior_h / 2.0);
-            depth_ground = t_ground * ray_cam_bottom.z();
+            depth_ground = (t_ground * ray_cam_bottom.z()) + depth_offset; 
             valid_ground = true;
         }
     }
 
     Eigen::Vector3d P_ego_final;
-    double final_depth = depth_prior;
+    double final_depth = final_depth_prior;
 
     if (!is_truncated_bottom && valid_ground && depth_ground > 0.0 && depth_ground < Params::dist_penalty_div) {
-        double depth_ratio = depth_ground / std::max(0.1, depth_prior);
+        double depth_ratio = depth_ground / std::max(0.1, final_depth_prior);
 
         if (depth_ratio > Params::depth_ratio_max || depth_ratio < Params::depth_ratio_min) {
             P_ego_final = P_ego_prior;
-            final_depth = depth_prior;
+            final_depth = final_depth_prior;
         } else {
             double ground_weight = std::exp(-depth_ground / std::max(0.1, Params::depth_ground_weight));
             P_ego_final = (ground_weight * P_ego_ground_center) + ((1.0 - ground_weight) * P_ego_prior);
-            final_depth = (ground_weight * depth_ground) + ((1.0 - ground_weight) * depth_prior);
+            final_depth = (ground_weight * depth_ground) + ((1.0 - ground_weight) * final_depth_prior);
         }
     } else {
         P_ego_final = P_ego_prior;
     }
 
     if (final_depth > Params::depth_max) final_depth = Params::depth_max;
-    if (final_depth < Params::depth_min) final_depth = Params::depth_min;
+    if (final_depth < 0.1) final_depth = 0.1;
 
-    if (final_depth == Params::depth_max || final_depth == Params::depth_min) {
+    if (final_depth == Params::depth_max || final_depth == 0.1) {
         P_cam_prior = ray_cam_center * final_depth;
         P_ego_final = cam.cam_to_ego.rotation * P_cam_prior + cam.cam_to_ego.translation;
     }
@@ -1257,7 +1446,7 @@ static Object3D project_to_global_3d(const DetResult& box2d, const CamInfo& cam)
     obj.vx = 0.0; 
     obj.vy = 0.0; 
     
-    if (box2d.id >= 0 && box2d.id <= 4) {
+    if ((box2d.id >= 0 && box2d.id <= 4) || box2d.id == 6 || box2d.id == 7) {
         Eigen::Quaterniond q = cam.ego_to_global.rotation;
         double ego_yaw = std::atan2(2.0 * (q.w() * q.z() + q.x() * q.y()), 1.0 - 2.0 * (q.y() * q.y() + q.z() * q.z()));
         obj.yaw = ego_yaw; 
@@ -1279,7 +1468,7 @@ static Object3D project_to_global_3d(const DetResult& box2d, const CamInfo& cam)
     obj.proj_confidence = std::max(Params::min_proj_confidence, (1.0 - (dist_from_center / max_dist_from_center))) * edge_penalty;
     obj.attribute_name = ""; 
 
-    double distance_penalty = std::max(Params::min_dist_penalty, 1.0 - (final_depth / std::max(0.1, Params::dist_penalty_div)));
+    double distance_penalty = std::max(Params::min_dist_penalty, std::exp(-final_depth / Params::dist_penalty_div));
     obj.score = box2d.score * distance_penalty;
     obj.visibility_level = 4;
     obj.ego_translation = cam.ego_to_global.translation;
@@ -1294,7 +1483,6 @@ static Object3D project_to_global_3d(const DetResult& box2d, const CamInfo& cam)
     obj.score = trunc_val(obj.score);
     obj.proj_confidence = trunc_val(obj.proj_confidence);
     
-    // Calculate and store measurement covariance immediately
     obj.measurement_cov = calculate_measurement_covariance(obj);
     obj.has_cov = true;
     obj.fusion_count = 1;
@@ -1356,8 +1544,15 @@ static std::vector<Object3D> apply_3d_wbf(std::vector<Object3D>& all_3d) {
             double eucl_dist = bev_distance(cluster, all_3d[j]);
             double dist_to_ego = std::hypot(cluster.x - cluster.ego_translation.x(), cluster.y - cluster.ego_translation.y());
             
-            double dyn_thresh = std::max(Params::wbf_dyn_base, dist_to_ego * Params::wbf_dyn_dist_scale);
+            // Scale the dynamic threshold by the object's bounded length prior 
+            double length_ratio = cluster.l / 4.63;
+            if (length_ratio < Params::len_ratio_min) length_ratio = Params::len_ratio_min;
+            if (length_ratio > Params::len_ratio_max) length_ratio = Params::len_ratio_max;
+
+            double dyn_thresh = std::max(Params::wbf_dyn_base * length_ratio, dist_to_ego * Params::wbf_dyn_dist_scale);
             if (cluster.class_id == 5) dyn_thresh *= Params::wbf_dyn_ped_mult; 
+            else if (cluster.class_id == 6 || cluster.class_id == 7) dyn_thresh *= Params::wbf_dyn_bike_mult; 
+            else if (cluster.class_id >= 1 && cluster.class_id <= 4) dyn_thresh *= Params::wbf_dyn_heavy_mult; // Heavy vehicle explicit multiplier
 
             // Strict mathematical gate (Chi-square distribution) prevents ghost merges
             if (std::abs(det_cov) > 1e-06 && std::isfinite(det_cov)) {
@@ -1384,7 +1579,9 @@ static std::vector<Object3D> apply_3d_wbf(std::vector<Object3D>& all_3d) {
                 weighted_h += all_3d[j].h * weight_j;
                 
                 double target_yaw = all_3d[j].yaw;
-                if (cluster.class_id >= 0 && cluster.class_id <= 4) {
+                
+                // Include motorcycles(6) and bicycles(7) for proper yaw flip logic
+                if ((cluster.class_id >= 0 && cluster.class_id <= 4) || cluster.class_id == 6 || cluster.class_id == 7) {
                     if (std::cos(target_yaw - cluster.yaw) < 0.0) {
                         target_yaw += M_PI; 
                     }
@@ -1412,10 +1609,16 @@ static std::vector<Object3D> apply_3d_wbf(std::vector<Object3D>& all_3d) {
             z_fused = R_fused * WZ_sum;
 
             // PREVENT COVARIANCE COLLAPSE: 
-            // Ensures that heavily overlapping detections do not result in near-zero 
-            // covariance, which causes hyper-sensitive Mahalanobis rejection in tracking.
-            if (R_fused(0, 0) < 0.8) R_fused(0, 0) = 0.8;
-            if (R_fused(1, 1) < 0.8) R_fused(1, 1) = 0.8;
+            // Scale the minimum allowed covariance boundary using length_ratio 
+            double length_ratio = cluster.l / 4.63;
+            if (length_ratio < Params::len_ratio_min) length_ratio = Params::len_ratio_min;
+            if (length_ratio > Params::len_ratio_max) length_ratio = Params::len_ratio_max;
+
+            double min_cov_x = std::max(Params::min_cov_bound_base, Params::min_cov_bound_scale * length_ratio);
+            double min_cov_y = std::max(Params::min_cov_bound_base, Params::min_cov_bound_scale * length_ratio);
+
+            if (R_fused(0, 0) < min_cov_x) R_fused(0, 0) = min_cov_x;
+            if (R_fused(1, 1) < min_cov_y) R_fused(1, 1) = min_cov_y;
 
             cluster.x = z_fused.x();
             cluster.y = z_fused.y();
@@ -1446,51 +1649,51 @@ static void simultaneous_batch_fusion_task(
       const std::vector<CamInfo>& batch_cams,  
       MultiObjectTracker& tracker)  
 {
-    double fusion_start = get_thread_time_ms();
+      double fusion_start = get_thread_time_ms();
 
-    // 1. Aggregate all detections from all cameras into a single global space first
-    std::vector<Object3D> global_3d;
-    for (size_t c = 0; c < batch_boxes.size(); ++c) {
-        for (const auto& box : batch_boxes[c]) {
-            if (box.score < Params::score_threshold) continue;
-            if (box.id >= 0 && box.id <= 9) {
-                global_3d.push_back(project_to_global_3d(box, batch_cams[c]));
+      // 1. Aggregate all detections from all cameras into a single global space first
+      std::vector<Object3D> global_3d;
+      for (size_t c = 0; c < batch_boxes.size(); ++c) {
+            for (const auto& box : batch_boxes[c]) {
+                  if (box.score < Params::score_threshold) continue;
+                  if (box.id >= 0 && box.id <= 9) {
+                        global_3d.push_back(project_to_global_3d(box, batch_cams[c]));
+                  }
             }
-        }
-    }
+      }
 
-    // 2. Apply 3D Weighted Box Fusion across ALL cameras simultaneously
-    // This fuses overlapping FOV detections (e.g. FRONT and FRONT_LEFT) before updating the tracker
-    std::vector<Object3D> spatial_fused = apply_3d_wbf(global_3d);
+      // 2. Apply 3D Weighted Box Fusion across ALL cameras simultaneously
+      // This fuses overlapping FOV detections (e.g. FRONT and FRONT_LEFT) before updating the tracker
+      std::vector<Object3D> spatial_fused = apply_3d_wbf(global_3d);
 
-    // 3. Update tracker exactly once per sweep with the globally fused measurements
-    tracker.update_measurements(spatial_fused);
+      // 3. Update tracker exactly once per sweep with the globally fused measurements
+      tracker.update_measurements(spatial_fused);
 
-    double fusion_elapsed = get_thread_time_ms() - fusion_start;
-    in_fusion_mutex.lock();
-    sum_fusion_time += fusion_elapsed;
-    in_fusion_mutex.unlock();
+      double fusion_elapsed = get_thread_time_ms() - fusion_start;
+      in_fusion_mutex.lock();
+      sum_fusion_time += fusion_elapsed;
+      in_fusion_mutex.unlock();
 }
 
 static void sequential_fusion_task(std::vector<DetResult>& valid_results, const CamInfo& cam_info, MultiObjectTracker& tracker) {
-    double fusion_start = get_thread_time_ms();
-    
-    std::vector<Object3D> local_3d;
-    
-    for (const auto& box : valid_results) {
-        if (box.score < Params::score_threshold) continue;
-        if (box.id >= 0 && box.id <= 9) {
-            local_3d.push_back(project_to_global_3d(box, cam_info));
-        }
-    }
-    
-    std::vector<Object3D> spatial_fused = apply_3d_wbf(local_3d);
-    tracker.update_measurements(spatial_fused);
+      double fusion_start = get_thread_time_ms();
+       
+      std::vector<Object3D> local_3d;
+       
+      for (const auto& box : valid_results) {
+            if (box.score < Params::score_threshold) continue;
+            if (box.id >= 0 && box.id <= 9) {
+                  local_3d.push_back(project_to_global_3d(box, cam_info));
+            }
+      }
+       
+      std::vector<Object3D> spatial_fused = apply_3d_wbf(local_3d);
+      tracker.update_measurements(spatial_fused);
 
-    double fusion_elapsed = get_thread_time_ms() - fusion_start;
-    in_fusion_mutex.lock();
-    sum_fusion_time += fusion_elapsed;
-    in_fusion_mutex.unlock();
+      double fusion_elapsed = get_thread_time_ms() - fusion_start;
+      in_fusion_mutex.lock();
+      sum_fusion_time += fusion_elapsed;
+      in_fusion_mutex.unlock();
 }
 
 static void postprocess_task_multicam(
@@ -1615,7 +1818,7 @@ static int extract_cam_idx(const std::string& filename) {
 }
 
 static std::vector<MultiCamFrame> parse_nuscenes_dataset(std::string dataset_path) {
-    std::string v1_mini_dir = dataset_path + "/v1.0-mini/";
+    std::string v1_mini_dir = dataset_path + "/v1.0/";
     std::vector<MultiCamFrame> dataset;
     if (g_verbose) std::cout << "INFO: Parsing nuScenes database...\n";
 
@@ -2211,7 +2414,7 @@ public:
     static EvalMetrics evaluate_metrics(const std::vector<FrameEvalData>& evaluation_buffer, bool verbose = true) {
         if (verbose) {
             std::cout << "\n======================================================\n";
-            std::cout << "   NuScenes Official Devkit Metrics Evaluation\n";
+            std::cout << "    NuScenes Official Devkit Metrics Evaluation\n";
             std::cout << "======================================================\n";
         }
 
@@ -2472,7 +2675,7 @@ public:
         double tp_metrics_sum = std::max(1.0 - mean_ate, 0.0) + std::max(1.0 - mean_ase, 0.0) +  
                                 std::max(1.0 - mean_aoe, 0.0) + std::max(1.0 - mean_ave, 0.0) +  
                                 std::max(1.0 - mean_aae, 0.0);
-                                                
+                                                                
         double nds = (5.0 * mean_ap + tp_metrics_sum) / 10.0;
 
         if (verbose) {
@@ -2836,9 +3039,11 @@ bool run_multicam_demo(
 
     std::thread render_thread([&]() {
         DisplayState display_state;
-        cv::VideoWriter video_writer;
         int layout_width = 1920; 
         int layout_height = 1080;
+        
+        GstElement *gst_pipeline = nullptr;
+        GstElement *gst_appsrc = nullptr;
 
         if (g_output_mode == OUTPUT_SCREEN) {
             // Initialize the Display backend module for local Wayland UI evaluation
@@ -2847,23 +3052,41 @@ bool run_multicam_demo(
                 return;
             }
         } else if (g_output_mode == OUTPUT_VIDEO) {
+            // Initialize GStreamer context
+            gst_init(nullptr, nullptr);
+
             // Apply standard hardware and software optimized H.264 Encoder Pipelines
             #if defined(__aarch64__)
-                // Software encoder for aarch64
-                std::string encoder_str = "video/x-raw,format=I420 ! x264enc speed-preset=medium pass=quant quantizer=21 key-int-max=24";
+                // OpenMAX Hardware-accelerated encoder for aarch64 systems
+                std::string encoder_str = "videoconvert ! video/x-raw,format=NV12 ! omxh264enc control-rate=variable target-bitrate=20000000 interval-intraframes=24";
             #elif defined(__x86_64__)
                 // Hardware-accelerated encoder for x86_64
-                std::string encoder_str = "video/x-raw,format=NV12 ! vaapih264enc rate-control=cqp init-qp=21 keyframe-period=24"; 
+                std::string encoder_str = "videoconvert ! video/x-raw,format=NV12 ! vaapih264enc rate-control=cqp init-qp=21 keyframe-period=24"; 
+            #else
+                // Software Fallback encoder
+                std::string encoder_str = "videoconvert ! video/x-raw,format=I420 ! x264enc speed-preset=medium pass=quant quantizer=21 key-int-max=24";
             #endif
             
-            std::string pipeline_str = "appsrc ! videoconvert ! " + encoder_str + " ! h264parse ! mp4mux ! filesink location=" + std::string(output_video_path);
+            // Build pipeline dynamically to inject custom path safely
+            std::string pipeline_str = "appsrc name=mysource ! " + encoder_str + 
+                                       " ! h264parse ! mp4mux ! filesink location=" + std::string(output_video_path) + "";
             
-            // nuScenes camera dataset captures at 12Hz, while keyframes are annotated at 2Hz.
-            // Since we are including sweep data, the correct playback framerate is 12.0 FPS.
-            double target_fps = 12.0; 
-            video_writer.open(pipeline_str, cv::CAP_GSTREAMER, 0, target_fps, cv::Size(layout_width, layout_height));
-            if (!video_writer.isOpened()) {
-                std::cerr << "WARNING: Could not open VideoWriter with GStreamer pipeline.\n";
+            gst_pipeline = gst_parse_launch(pipeline_str.c_str(), nullptr);
+            if (!gst_pipeline) {
+                std::cerr << "WARNING: Could not create GStreamer pipeline.\n";
+            } else {
+                gst_appsrc = gst_bin_get_by_name(GST_BIN(gst_pipeline), "mysource");
+                
+                // Set framerate to 0/1 to support Variable Frame Rate (VFR) based on dynamic pipeline_fps.
+                GstCaps *caps = gst_caps_new_simple("video/x-raw",
+                                                    "format", G_TYPE_STRING, "BGR",
+                                                    "width", G_TYPE_INT, layout_width,
+                                                    "height", G_TYPE_INT, layout_height,
+                                                    "framerate", GST_TYPE_FRACTION, 0, 1,
+                                                    NULL);
+                g_object_set(G_OBJECT(gst_appsrc), "caps", caps, "format", GST_FORMAT_TIME, NULL);
+                gst_caps_unref(caps);
+                gst_element_set_state(gst_pipeline, GST_STATE_PLAYING);
             }
         }
 
@@ -2900,7 +3123,9 @@ bool run_multicam_demo(
             // Part B: Process 6-Camera Grid (840x1080 allocated -> 420x360 cell size)
             std::vector<cv::Mat> current_images(6);
             for (int c = 0; c < 6; ++c) {
-                current_images[c] = cv::imread(payload.frame_data.cameras[c].path, cv::IMREAD_COLOR);
+                // IMPORTANT FIX: Use TurboJPEG directly to read the image into cv::Mat instead of cv::imread
+                // This bypasses OpenCV's internal missing codec errors on embedded aarch64 environments
+                current_images[c] = read_jpeg_to_mat(payload.frame_data.cameras[c].path);
                 if (current_images[c].empty()) continue;
 
                 for (const auto& trk : payload.tracks_snapshot) {
@@ -2929,9 +3154,34 @@ bool run_multicam_demo(
             if (g_output_mode == OUTPUT_SCREEN) {
                 render_frame_on_screen(display_state, final_canvas);
                 wl_display_dispatch_pending(display_state.display);
-            } else if (g_output_mode == OUTPUT_VIDEO) {
-                if (video_writer.isOpened()) {
-                    video_writer.write(final_canvas);
+            } else if (g_output_mode == OUTPUT_VIDEO && gst_appsrc != nullptr) {
+                // Ensure data continuity before mapping to GstBuffer
+                if (!final_canvas.isContinuous()) {
+                    final_canvas = final_canvas.clone();
+                }
+                
+                guint size = final_canvas.total() * final_canvas.elemSize();
+                GstBuffer *buffer = gst_buffer_new_allocate(NULL, size, NULL);
+                
+                GstMapInfo map;
+                gst_buffer_map(buffer, &map, GST_MAP_WRITE);
+                memcpy(map.data, final_canvas.data, size);
+                gst_buffer_unmap(buffer, &map);
+
+                // Dynamically calculate frame duration based on current pipeline_fps
+                double current_fps = payload.pipeline_fps > 0.0 ? payload.pipeline_fps : 12.0; // Fallback to 12.0 fps initially
+                GstClockTime duration = (GstClockTime)(GST_SECOND / current_fps);
+                
+                static GstClockTime timestamp = 0;
+                GST_BUFFER_PTS(buffer) = timestamp;
+                GST_BUFFER_DURATION(buffer) = duration;
+                timestamp += duration;
+
+                // Safely push buffer utilizing GStreamer C API directly 
+                // Note: gst_app_src_push_buffer assumes ownership of the buffer, so gst_buffer_unref() is deliberately NOT called here.
+                GstFlowReturn ret = gst_app_src_push_buffer(GST_APP_SRC(gst_appsrc), buffer);
+                if (ret != GST_FLOW_OK) {
+                    std::cerr << "WARNING: GStreamer appsrc push-buffer failed with status: " << ret << " (Check GStreamer encoder plugin availability and format compatibility)\n";
                 }
             }
         }
@@ -2939,8 +3189,32 @@ bool run_multicam_demo(
         // Execute proper resource termination upon processing complete
         if (g_output_mode == OUTPUT_SCREEN) {
             cleanup_display_system(display_state);
-        } else if (g_output_mode == OUTPUT_VIDEO) {
-            if(video_writer.isOpened()) video_writer.release();
+        } else if (g_output_mode == OUTPUT_VIDEO && gst_appsrc != nullptr) {
+            // Guarantee stream termination and await bus synchronization preventing MP4 header corruption
+            // Using correct C API to emit end-of-stream without GLib return value type errors
+            gst_app_src_end_of_stream(GST_APP_SRC(gst_appsrc));
+            
+            GstBus *bus = gst_element_get_bus(gst_pipeline);
+            if (bus) {
+                GstMessage *msg = gst_bus_timed_pop_filtered(bus, GST_CLOCK_TIME_NONE, 
+                                                             (GstMessageType)(GST_MESSAGE_EOS | GST_MESSAGE_ERROR));
+                if (msg != NULL) {
+                    if (GST_MESSAGE_TYPE(msg) == GST_MESSAGE_ERROR) {
+                        GError *err = NULL;
+                        gchar *debug_info = NULL;
+                        gst_message_parse_error(msg, &err, &debug_info);
+                        std::cerr << "ERROR: GStreamer pipeline error received: " << err->message << "\n";
+                        if (debug_info) std::cerr << "DEBUG INFO: " << debug_info << "\n";
+                        g_error_free(err);
+                        g_free(debug_info);
+                    }
+                    gst_message_unref(msg);
+                }
+                gst_object_unref(bus);
+            }
+            gst_element_set_state(gst_pipeline, GST_STATE_NULL);
+            gst_object_unref(gst_appsrc);
+            gst_object_unref(gst_pipeline);
         }
         
         auto render_end_time = std::chrono::steady_clock::now();
@@ -2978,9 +3252,9 @@ bool run_multicam_demo(
 
         double next_dt = Params::default_dt;
         if (frame_idx > 0) {
-            next_dt = (current->timestamp - prev_timestamp) / 1e6;
-            if (next_dt <= 0.0) next_dt = Params::min_dt; 
-            if (next_dt > Params::max_dt) next_dt = Params::max_dt; 
+                next_dt = (current->timestamp - prev_timestamp) / 1e6;
+                if (next_dt <= 0.0) next_dt = 0.001;  
+                if (next_dt > 2.0) next_dt = 2.0;  
         }
         prev_timestamp = current->timestamp;
 
@@ -3062,7 +3336,7 @@ bool run_multicam_demo(
         }
 
         // Perform Pure Tracker FPS evaluation decoupling logic from IO
-        processed_frames_count++;
+        processed_frames_count += 6;
         auto now = std::chrono::steady_clock::now();
         std::chrono::duration<double> fps_elapsed = now - fps_timer_start;
         

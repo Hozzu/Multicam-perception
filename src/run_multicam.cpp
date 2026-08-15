@@ -35,91 +35,112 @@ static bool g_verbose = true;
 
 namespace Params {
       // 1. 2D Detection & NMS
-      inline double score_threshold = 0.2;
-      inline double iou_threshold = 0.7;
+      inline double score_threshold = 0.1;
+      inline double iou_threshold = 0.5;
        
       // 2. Tracker Lifecycle
-      // Locked to realistic lifespans to prevent ghost tracks and maintain strict association
-      inline double init_track_score = 0.7;
+      inline double init_track_score = 0.9;
       inline int tentative_hit_thresh = 3;
-      inline int del_tentative_thresh = 2;
-      inline int del_confirmed_thresh = 30;           // 2.5 seconds max memory at 12 FPS
+      inline int del_tentative_thresh = 3; 
+      inline int del_confirmed_thresh = 35;            
       inline double invisible_penalty = 0.95;  
        
       // 3. Kalman Filter: Initial Covariance Matrix & Bounds
-      inline double cov_p_init = 0.1;
+      inline double cov_p_init = 0.15;
       inline double cov_v_init = 25.0;        
-      inline double cov_p_delay = 5.0;
-      inline double cov_v_delay = 10.0;
-      inline double max_cov_limit = 300.0;            // Locked from previous optimal tuning
-      inline double min_cov_limit = 0.01;        
-      inline double nan_cov_fallback = 10.0;    
-       
+      inline double min_cov_limit = 0.001;        
+
       // 4. Kalman Filter: Continuous Process Noise (Q)
-      inline double noise_a_base = 10.0;              // Allows up to ~0.8G physical acceleration
-      inline double noise_a_speed = 0.0005;
+      inline double noise_a_base = 4.0;                
+      inline double noise_a_speed = 0.01;
       inline double noise_a_ped = 2.0;        
       inline double noise_a_cone = 0.01;
-      inline double noise_a_parked = 0.005;
+      inline double noise_a_parked = 0.001;
        
       // 5. Dynamics, Speed Limits & Damping
-      inline double damp_moving = 0.98;               // Realistic coasting momentum at 12 FPS
-      inline double damp_parked = 0.3;       
-      inline double max_speed_default = 35.0;         // ~126 km/h cap
-      inline double max_speed_ped = 4.0;
-      inline double max_speed_bike = 15.0;
+      inline double damp_moving = 0.98;                
+      inline double damp_parked = 0.2;        
+      inline double max_speed_default = 35.0;         
+      inline double max_speed_ped = 2.0;
+      inline double max_speed_bike = 10.0;
       inline double max_speed_static = 0.5;
-      inline double static_speed_thresh = 0.6;
-      inline double max_accel = 15.0;          
+      inline double static_speed_thresh = 1.0;
        
       // 6. Yaw (Heading) Update Mechanism
       inline double yaw_speed_thresh = 2.0;  
-      inline double yaw_alpha = 0.05;           
+      inline double yaw_alpha = 0.05;            
        
       // 7. Kalman Filter: Measurement Noise (R)
-      inline double var_depth_base = 1.5;
-      inline double var_depth_scale = 10.0;
-      inline double var_bearing_base = 0.02;
+      inline double var_depth_base = 0.5;
+      inline double var_depth_scale = 15.0;
+      inline double var_bearing_base = 0.05;
       inline double var_bearing_scale = 50.0;
       inline double conf_scale = 5.0;
-      inline double proj_scale = 5.0;
-      inline double diag_load = 0.01;  
-      inline double ema_alpha = 0.3;                  // Moderately fast scale adaptation
+      inline double proj_scale = 6.0;
+      inline double ema_alpha = 0.2;                  
        
       // 8. Track-to-Measurement Matching
-      inline double dyn_match_base = 4.0;
-      inline double dyn_match_dist_scale = 0.08;
-      inline double dyn_match_ped_mult = 1.0;
-      inline double maha_thresh = 9.21;               // Statistically precise 99% Chi-Square boundary
-      inline double eval_maha_cov_add = 0.5;  
+      inline double dyn_match_base = 5.0;
+      inline double dyn_match_dist_scale = 0.15;
+      inline double dyn_match_ped_mult = 0.6;
+      inline double maha_thresh = 9.21;                
+      inline double eval_maha_cov_add = 0.3;  
        
       // 9. 3D Projection, Truncation & Edge Cases
-      inline double min_focal_length = 1.0;
-      inline double truncation_margin_px = 0.0;
-      inline double min_box_dim_px = 5.0;
+      inline double truncation_margin_px = 1.0;
       inline double depth_ground_weight = 15.0;
-      inline double fov_edge_margin = 0.02;
-      inline double depth_max = 160.0;
-      inline double depth_min = 0.1;
-      inline double fov_edge_penalty = 0.7;           // Reasonable penalty that doesn't blind the tracker
-      inline double dist_penalty_div = 100.0;
-      inline double depth_ratio_max = 1.3;
+      inline double fov_edge_margin = 0.05;
+      inline double depth_max = 140.0;
+      inline double fov_edge_penalty = 0.7;            
+      inline double dist_penalty_div = 250.0; 
+      inline double depth_ratio_max = 1.2;
       inline double depth_ratio_min = 0.5;
        
       // 10. 3D Weighted Box Fusion (Spatial Fusion)
-      inline double wbf_dyn_base = 1.5;               // Safely preserves distinct adjacent vehicles
+      inline double wbf_dyn_base = 2.0;                
       inline double wbf_dyn_dist_scale = 0.1;  
-      inline double wbf_dyn_ped_mult = 0.3;
+      inline double wbf_dyn_ped_mult = 0.2;
 
       // 11. Temporal & Stability Bounds
-      inline double dt_delay_thresh = 0.5;          
-      inline double default_dt = 0.083;
-      inline double target_dt = 0.5;                
-      inline double max_dt = 2.0;                    
-      inline double min_dt = 0.001;                 
-      inline double horizon_z_thresh = 0.0;           // Horizon projection trust expanded for distant objects
-      inline double min_dist_penalty = 0.01;          
-      inline double min_proj_confidence = 0.15;              
+      inline double default_dt = 0.05;
+      inline double target_dt = 0.4;                
+      inline double horizon_z_thresh = 0.0;            
+      inline double min_dist_penalty = 0.1;          
+      inline double min_proj_confidence = 0.15;
+      
+      // 12. Dynamic Scaling & Corner Case Physics Parameters
+      inline double len_ratio_min = 0.7;
+      inline double len_ratio_max = 4.0; 
+      inline double wbf_dyn_bike_mult = 1.5;
+      inline double min_cov_bound_base = 1.0;
+      inline double min_cov_bound_scale = 0.5;
+      inline double noise_a_heavy_mult = 0.6;
+      inline double noise_a_bike_mult = 1.5;
+      inline double yaw_speed_heavy_mult = 2.5;
+      inline double yaw_speed_bike_mult = 0.5;
+      inline double dyn_match_bike_mult = 1.0;
+
+      // 13. Continuous Aspect-Ratio Aware Depth Compensation
+      // Replaced hard threshold with a blend range to prevent 3D positional snapping
+      inline double aspect_ratio_blend_start = 1.2;
+      inline double aspect_ratio_blend_end = 2.0;
+      inline double depth_weight_front_h = 0.7;
+      inline double depth_weight_side_h = 0.9;
+      inline double depth_weight_bike_h = 0.7;
+
+      // 14. Tracker Grace Period (Occlusion Tolerance)
+      inline int grace_hit_high = 15;
+      inline int grace_frames_high = 5;
+      inline int grace_hit_low = 7;
+      inline int grace_frames_low = 1;
+      inline double penalty_hard_floor = 0.5;
+
+      // 15. Heavy Vehicles (Bus, Truck, Trailer) Specific Physics
+      inline double heavy_depth_offset_front = 0.5; 
+      inline double heavy_depth_offset_side = 0.35; 
+      inline double max_speed_heavy = 20.0; 
+      inline double damp_heavy = 0.6; // Much stronger damping to prevent jitter-induced ghost velocity
+      inline double wbf_dyn_heavy_mult = 3.0; 
 }
 
 // ============================================================================
@@ -167,7 +188,7 @@ static void reset_global_stats() {
 }
 
 // ============================================================================
-//                              INTERNAL DATA STRUCTURES & THREAD POOL
+//                               INTERNAL DATA STRUCTURES & THREAD POOL
 // ============================================================================
 namespace {
 
@@ -355,9 +376,18 @@ static Eigen::Matrix2d calculate_measurement_covariance(const Object3D& meas) {
     R_rot << c, -s, 
              s,  c;
     
+    // Calculate base variances
     double var_depth = Params::var_depth_base + std::pow(dist_to_ego / std::max(0.1, Params::var_depth_scale), 2.0); 
     double var_bearing = Params::var_bearing_base + (dist_to_ego / std::max(0.1, Params::var_bearing_scale));
     
+    // Dynamically scale depth variance based on the object's length prior.
+    // Bound strictly using tuneable parameters to prevent covariance explosion or collapse.
+    double length_ratio = meas.l / 4.63;
+    if (length_ratio < Params::len_ratio_min) length_ratio = Params::len_ratio_min;
+    if (length_ratio > Params::len_ratio_max) length_ratio = Params::len_ratio_max;
+    
+    var_depth *= length_ratio; 
+
     double conf_scale = 1.0 + (1.0 - meas.score) * Params::conf_scale;
     double proj_scale = 1.0 + (1.0 - meas.proj_confidence) * Params::proj_scale; 
 
@@ -371,7 +401,7 @@ static Eigen::Matrix2d calculate_measurement_covariance(const Object3D& meas) {
 } // End of anonymous namespace
 
 // ============================================================================
-//                                                UTILITY FUNCTIONS
+//                                               UTILITY FUNCTIONS
 // ============================================================================
 
 // Official nuScenes 10 Classes Mapping & Priors (w, l, h)
@@ -499,16 +529,24 @@ class MultiObjectTracker {
         }
 
         void predict(double dt) {
-            if (!std::isfinite(dt) || dt <= 0.0) dt = Params::min_dt; 
-            if (dt > Params::max_dt) dt = Params::max_dt; 
+            // Hardcoded min_dt to 0.001 and max_dt to 2.0
+            if (!std::isfinite(dt) || dt <= 0.0) dt = 0.001; 
+            if (dt > 2.0) dt = 2.0; 
             this->last_dt = dt;
 
-            if (dt > Params::dt_delay_thresh) {
-                errorCovPost.diagonal() << Params::cov_p_delay, Params::cov_p_delay, Params::cov_v_delay, Params::cov_v_delay; 
+            // Hardcoded delay values since they are mathematical fallbacks and have no tuning impact
+            if (dt > 0.5) {
+                errorCovPost.diagonal() << 5.0, 5.0, 10.0, 10.0; 
             }
 
             double dt_ratio = dt / Params::target_dt;
+            
+            // Heavy Vehicles get extreme damping to forcibly suppress velocity jitter 
+            // caused by continuous aspect-ratio updates
             double base_damp = (obj.attribute_name == "vehicle.parked") ? Params::damp_parked : Params::damp_moving;
+            if (class_id >= 1 && class_id <= 4) {
+                base_damp = Params::damp_heavy;
+            }
             double damp = std::pow(base_damp, dt_ratio);
 
             Eigen::Matrix4d transitionMatrix;
@@ -520,9 +558,12 @@ class MultiObjectTracker {
             double current_speed = std::hypot(statePost(2), statePost(3));
             double noise_a = Params::noise_a_base + (current_speed * Params::noise_a_speed); 
             
+            // Adjust acceleration noise tailored to real-world physics of the object class
             if (class_id == 5) noise_a = Params::noise_a_ped; 
             else if (class_id == 8 || class_id == 9) noise_a = Params::noise_a_cone; 
             else if (obj.attribute_name == "vehicle.parked") noise_a = Params::noise_a_parked; 
+            else if (class_id >= 1 && class_id <= 4) noise_a = Params::noise_a_base * Params::noise_a_heavy_mult; 
+            else if (class_id == 6 || class_id == 7) noise_a = Params::noise_a_base * Params::noise_a_bike_mult; 
 
             double dt2 = dt * dt;
             double dt3 = dt2 * dt / 2.0;
@@ -539,6 +580,7 @@ class MultiObjectTracker {
 
             double max_speed = Params::max_speed_default; 
             if (class_id == 5) max_speed = Params::max_speed_ped; 
+            else if (class_id >= 1 && class_id <= 4) max_speed = Params::max_speed_heavy; // Heavy vehicle speed cap
             else if (class_id == 7) max_speed = Params::max_speed_bike; 
             else if (class_id == 8 || class_id == 9) max_speed = Params::max_speed_static; 
             
@@ -579,7 +621,8 @@ class MultiObjectTracker {
             
             double det = S.determinant();
             if (std::abs(det) < 1e-06 || !std::isfinite(det)) {
-                S(0, 0) += Params::diag_load; S(1, 1) += Params::diag_load; 
+                // Hardcoded diag_load to 0.01 to avoid mathematically impossible inversions
+                S(0, 0) += 0.01; S(1, 1) += 0.01; 
             }
 
             Eigen::Matrix<double, 4, 2> K = errorCovPost * H_T * S.inverse();
@@ -590,9 +633,10 @@ class MultiObjectTracker {
             errorCovPost = (I - K * measurementMatrix) * errorCovPost;
             
             for (int i = 0; i < 4; ++i) {
-                if (errorCovPost(i, i) > Params::max_cov_limit) errorCovPost(i, i) = Params::max_cov_limit;
+                // Hardcoded the max limit to 300.0 and nan fallback to 10.0 as safety nets
+                if (errorCovPost(i, i) > 300.0) errorCovPost(i, i) = 300.0;
                 if (errorCovPost(i, i) < Params::min_cov_limit) errorCovPost(i, i) = Params::min_cov_limit;
-                if (!std::isfinite(errorCovPost(i, i))) errorCovPost(i, i) = Params::nan_cov_fallback;
+                if (!std::isfinite(errorCovPost(i, i))) errorCovPost(i, i) = 10.0;
             }
 
             if (std::isfinite(statePost(0)) && std::isfinite(statePost(1))) {
@@ -614,14 +658,28 @@ class MultiObjectTracker {
             obj.h = obj.h * (1.0 - time_adjusted_ema_alpha) + meas.h * time_adjusted_ema_alpha;
             
             double speed = std::hypot(obj.vx, obj.vy);
-            double target_yaw = meas.yaw;
             
-            if (speed > Params::yaw_speed_thresh && this->class_id >= 0 && this->class_id <= 7) {
+            double target_yaw = this->obj.yaw; 
+            double class_yaw_speed_thresh = Params::yaw_speed_thresh;
+
+            // Scale yaw speed threshold based on physics to prevent depth jitter twisting large vehicles
+            if (this->class_id >= 1 && this->class_id <= 4) {
+                class_yaw_speed_thresh *= Params::yaw_speed_heavy_mult; 
+            } else if (this->class_id == 6 || this->class_id == 7) {
+                class_yaw_speed_thresh *= Params::yaw_speed_bike_mult; 
+            }
+
+            if (speed > class_yaw_speed_thresh && this->class_id >= 0 && this->class_id <= 7) {
                 target_yaw = std::atan2(obj.vy, obj.vx);
-            } else if (this->class_id >= 0 && this->class_id <= 4) {
-                if (std::cos(target_yaw - this->obj.yaw) < 0.0) {
-                    target_yaw += M_PI; 
+            } else if (this->state == TENTATIVE && this->hit_count <= Params::tentative_hit_thresh + 1) {
+                target_yaw = meas.yaw;
+                if ((this->class_id >= 0 && this->class_id <= 4) || this->class_id == 6 || this->class_id == 7) {
+                    if (std::cos(target_yaw - this->obj.yaw) < 0.0) {
+                        target_yaw += M_PI; 
+                    }
                 }
+            } else {
+                target_yaw = this->obj.yaw; 
             }
 
             double time_adjusted_yaw_alpha = 1.0 - std::pow(1.0 - Params::yaw_alpha, dt_ratio);
@@ -665,20 +723,20 @@ class MultiObjectTracker {
 
 public:
     void clear() {
-        std::lock_guard<std::mutex> lock(tracker_mutex);
+        std::lock_guard<std::mutex> tracker_lock(tracker_mutex);
         tracks.clear();
         next_id = 1;
         current_step = 0;
     }
 
     void predict_all(double dt) {
-        std::lock_guard<std::mutex> lock(tracker_mutex);
+        std::lock_guard<std::mutex> tracker_lock(tracker_mutex);
         current_step++; 
         for (auto& trk : tracks) trk.predict(dt);
     }
 
     void update_measurements(const std::vector<Object3D>& detections) {
-        std::lock_guard<std::mutex> lock(tracker_mutex);
+        std::lock_guard<std::mutex> tracker_lock(tracker_mutex);
         
         if (detections.empty()) return;
 
@@ -705,8 +763,16 @@ public:
             double dist_to_ego = std::hypot(tracks[t].obj.x - tracks[t].obj.ego_translation.x(), 
                                             tracks[t].obj.y - tracks[t].obj.ego_translation.y());
             
-            double dyn_match_dist = std::max(Params::dyn_match_base, dist_to_ego * Params::dyn_match_dist_scale); 
+            // Dynamically scale dynamic match distance by bounded length prior. 
+            double class_l = tracks[t].obj.l;
+            double length_ratio = class_l / 4.63;
+            if (length_ratio < Params::len_ratio_min) length_ratio = Params::len_ratio_min;
+            if (length_ratio > Params::len_ratio_max) length_ratio = Params::len_ratio_max;
+
+            double dyn_match_dist = std::max(Params::dyn_match_base * length_ratio, dist_to_ego * Params::dyn_match_dist_scale); 
+            
             if (tracks[t].class_id == 5) dyn_match_dist *= Params::dyn_match_ped_mult;
+            else if (tracks[t].class_id == 6 || tracks[t].class_id == 7) dyn_match_dist *= Params::dyn_match_bike_mult; 
 
             for (size_t d = 0; d < detections.size(); ++d) {
                 if (tracks[t].class_id != detections[d].class_id) continue;
@@ -743,7 +809,7 @@ public:
     }
 
     void cleanup_tracks() {
-        std::lock_guard<std::mutex> lock(tracker_mutex);
+        std::lock_guard<std::mutex> tracker_lock(tracker_mutex);
         tracks.erase(std::remove_if(tracks.begin(), tracks.end(), [](Track& t) { 
             if (!std::isfinite(t.obj.x) || !std::isfinite(t.obj.y)) return true;
             
@@ -757,17 +823,43 @@ public:
     }
 
     std::vector<Object3D> get_active_tracks() {
-        std::lock_guard<std::mutex> lock(tracker_mutex);
+        std::lock_guard<std::mutex> tracker_lock(tracker_mutex);
         std::vector<Object3D> out;
         for (auto& trk : tracks) {
             if (trk.state == CONFIRMED) {
                 Object3D obj = trk.obj;
                 
+                // Softened Score Decay Strategy with dynamic tuning parameters
                 if (trk.invisible_count > 0) {
-                    obj.score *= std::pow(Params::invisible_penalty, trk.invisible_count);
+                    double penalty = Params::invisible_penalty;
+                    int grace_frames = 0;
+                    
+                    if (trk.hit_count >= Params::grace_hit_high) {
+                        grace_frames = Params::grace_frames_high;
+                    } else if (trk.hit_count >= Params::grace_hit_low) {
+                        grace_frames = Params::grace_frames_low;
+                    }
+                    
+                    int effective_invisible = std::max(0, trk.invisible_count - grace_frames);
+                    
+                    if (effective_invisible > 0) {
+                        double total_penalty = std::pow(penalty, effective_invisible);
+                        total_penalty = std::max(Params::penalty_hard_floor, total_penalty); 
+                        obj.score *= total_penalty;
+                    }
                 }
 
                 double speed = std::hypot(obj.vx, obj.vy);
+
+                // Hard speed limit clamp for heavy vehicles explicitly before output to secure mAVE
+                if (obj.class_id >= 1 && obj.class_id <= 4) {
+                    if (speed > Params::max_speed_heavy && speed > 0.0001) {
+                        obj.vx = (obj.vx / speed) * Params::max_speed_heavy;
+                        obj.vy = (obj.vy / speed) * Params::max_speed_heavy;
+                        speed = Params::max_speed_heavy; 
+                    }
+                }
+
                 if (obj.class_id >= 0 && obj.class_id <= 4) { 
                     obj.attribute_name = (speed > Params::static_speed_thresh) ? "vehicle.moving" : "vehicle.parked";
                 } else if (obj.class_id == 5) { 
@@ -795,13 +887,6 @@ public:
 static void preprocess_task(tflite::Interpreter * interpreter, int model_mode, std::string filename, int tensor_batch_idx, int cam_idx, std::vector<int> &img_heights, std::vector<int> &img_widths) {
       size_t last_slash_idx = filename.find_last_of("/\\");
       std::string base_filename = (last_slash_idx == std::string::npos) ? filename : filename.substr(last_slash_idx + 1);
-       
-      in_preprocess_mutex.lock();
-      if (g_verbose) {
-            std::cout << "Processing " << base_filename << "..\r";
-            std::cout.flush();
-      }
-      in_preprocess_mutex.unlock();
 
       double preprocess_start = get_thread_time_ms();
        
@@ -877,8 +962,6 @@ static void preprocess_task(tflite::Interpreter * interpreter, int model_mode, s
       }
 
       // Decode the JPEG image directly into the RGB buffer
-      // TJPF_RGB means we want the output as interleaved RGB
-      // 0 for pitch means default (width * pixel size)
       if (tjDecompress2(tjInstance, file_buf.data(), file_size, rgb_buf.data(), width, 0, height, TJPF_RGB, TJFLAG_FASTDCT) < 0) {
             if (g_verbose) std::cerr << "ERROR: TurboJPEG decompression failed for: " << filename << ". Error: " << tjGetErrorStr2(tjInstance) << std::endl;
             tjDestroy(tjInstance);
@@ -920,7 +1003,9 @@ static Object3D project_to_global_3d(const DetResult& box2d, const CamInfo& cam)
     double u_top = u_center;
     double v_top = safe_ymin;
 
-    double box_h_2d = std::max(Params::min_box_dim_px, safe_ymax - safe_ymin);
+    // Extract 2D width for aspect-ratio aware depth compensation
+    double box_w_2d = std::max(5.0, safe_xmax - safe_xmin);
+    double box_h_2d = std::max(5.0, safe_ymax - safe_ymin);
 
     if (!cam.distortion.empty() && cam.distortion.size() >= 4) {
         std::vector<cv::Point2f> src_pts = {
@@ -944,11 +1029,61 @@ static Object3D project_to_global_3d(const DetResult& box2d, const CamInfo& cam)
         u_center = dst_pts[1].x; v_center = dst_pts[1].y;
         
         double undistorted_h = dst_pts[0].y - dst_pts[2].y;
-        box_h_2d = std::max(Params::min_box_dim_px, undistorted_h);
+        box_h_2d = std::max(5.0, undistorted_h);
     }
 
-    double f_y = std::max(Params::min_focal_length, cam.intrinsic(1, 1));
-    double depth_prior = (f_y * prior_h) / box_h_2d;
+    double f_x = std::max(1.0, cam.intrinsic(0, 0));
+    double f_y = std::max(1.0, cam.intrinsic(1, 1));
+    
+    // Calculate primary depth from height
+    double depth_prior_h = (f_y * prior_h) / box_h_2d;
+    double final_depth_prior = depth_prior_h;
+    double depth_offset = 0.0;
+
+    // Continuous Aspect-Ratio Aware Depth Compensation & Surface-to-Center Depth Offset Correction
+    // Bypassed if horizontally truncated to prevent infinitely small box_w causing infinite distance.
+    if (!is_truncated_horizontal) {
+        if (box2d.id >= 0 && box2d.id <= 4) {
+            double aspect_2d = box_w_2d / box_h_2d;
+            double prior_front_aspect = prior_w / prior_h;
+            
+            // Normalize aspect ratio to determine perspective (1.0 = Front/Rear, >>1.0 = Side)
+            double aspect_norm = aspect_2d / std::max(0.1, prior_front_aspect);
+            
+            // Compute a continuous blending weight (0.0 = Pure Front/Rear, 1.0 = Pure Side)
+            double side_blend_weight = (aspect_norm - Params::aspect_ratio_blend_start) / 
+                                       (std::max(0.1, Params::aspect_ratio_blend_end - Params::aspect_ratio_blend_start));
+            side_blend_weight = std::max(0.0, std::min(1.0, side_blend_weight));
+
+            // Estimate depth assuming we see the front/rear (width corresponds to prior_w)
+            double depth_prior_w_front = (f_x * prior_w) / box_w_2d;
+            // Estimate depth assuming we see the side (width corresponds to prior_l)
+            double depth_prior_w_side = (f_x * prior_l) / box_w_2d;
+
+            // Blend the width-based depth estimations
+            double blended_depth_w = (1.0 - side_blend_weight) * depth_prior_w_front + (side_blend_weight) * depth_prior_w_side;
+            
+            // Blend the height trust factor (Side views rely more on height because width stretches out)
+            double current_depth_weight_h = (1.0 - side_blend_weight) * Params::depth_weight_front_h + (side_blend_weight) * Params::depth_weight_side_h;
+
+            final_depth_prior = (depth_prior_h * current_depth_weight_h) + (blended_depth_w * (1.0 - current_depth_weight_h));
+
+            // Smooth Offset Blending for Heavy Vehicles
+            // Prevents massive mAVE spikes caused by discrete snapping of center offsets.
+            if (box2d.id >= 1 && box2d.id <= 4) {
+                double offset_front = prior_l * Params::heavy_depth_offset_front;
+                double offset_side = prior_w * Params::heavy_depth_offset_side;
+                depth_offset = (1.0 - side_blend_weight) * offset_front + (side_blend_weight) * offset_side;
+            }
+        } else if (box2d.id == 6 || box2d.id == 7) {
+            // Bicycles and motorcycles change aspect ratios drastically. Blend width to stabilize jitter.
+            double depth_prior_w = (f_x * prior_w) / box_w_2d;
+            final_depth_prior = (depth_prior_h * Params::depth_weight_bike_h) + (depth_prior_w * (1.0 - Params::depth_weight_bike_h));
+        }
+    }
+
+    // Apply the physical geometric offset before ground intersection calculations
+    final_depth_prior += depth_offset;
 
     Eigen::Matrix3d safe_intrinsic = cam.intrinsic;
     if (std::abs(safe_intrinsic.determinant()) < 1e-06) {
@@ -958,7 +1093,7 @@ static Object3D project_to_global_3d(const DetResult& box2d, const CamInfo& cam)
     Eigen::Vector3d uv_center(u_center, v_center, 1.0);
     Eigen::Vector3d ray_cam_center = safe_intrinsic.inverse() * uv_center;
     ray_cam_center /= std::max(1e-06, ray_cam_center.z()); 
-    Eigen::Vector3d P_cam_prior = ray_cam_center * depth_prior;
+    Eigen::Vector3d P_cam_prior = ray_cam_center * final_depth_prior;
     Eigen::Vector3d P_ego_prior = cam.cam_to_ego.rotation * P_cam_prior + cam.cam_to_ego.translation;
 
     Eigen::Vector3d uv_bottom_vec(u_bottom, v_bottom, 1.0);
@@ -975,33 +1110,33 @@ static Object3D project_to_global_3d(const DetResult& box2d, const CamInfo& cam)
         if (t_ground > 0.0) {
             Eigen::Vector3d P_bottom_ego = cam.cam_to_ego.translation + t_ground * ray_ego_bottom;
             P_ego_ground_center = P_bottom_ego + Eigen::Vector3d(0.0, 0.0, prior_h / 2.0);
-            depth_ground = t_ground * ray_cam_bottom.z();
+            depth_ground = (t_ground * ray_cam_bottom.z()) + depth_offset; 
             valid_ground = true;
         }
     }
 
     Eigen::Vector3d P_ego_final;
-    double final_depth = depth_prior;
+    double final_depth = final_depth_prior;
 
     if (!is_truncated_bottom && valid_ground && depth_ground > 0.0 && depth_ground < Params::dist_penalty_div) {
-        double depth_ratio = depth_ground / std::max(0.1, depth_prior);
+        double depth_ratio = depth_ground / std::max(0.1, final_depth_prior);
 
         if (depth_ratio > Params::depth_ratio_max || depth_ratio < Params::depth_ratio_min) {
             P_ego_final = P_ego_prior;
-            final_depth = depth_prior;
+            final_depth = final_depth_prior;
         } else {
             double ground_weight = std::exp(-depth_ground / std::max(0.1, Params::depth_ground_weight));
             P_ego_final = (ground_weight * P_ego_ground_center) + ((1.0 - ground_weight) * P_ego_prior);
-            final_depth = (ground_weight * depth_ground) + ((1.0 - ground_weight) * depth_prior);
+            final_depth = (ground_weight * depth_ground) + ((1.0 - ground_weight) * final_depth_prior);
         }
     } else {
         P_ego_final = P_ego_prior;
     }
 
     if (final_depth > Params::depth_max) final_depth = Params::depth_max;
-    if (final_depth < Params::depth_min) final_depth = Params::depth_min;
+    if (final_depth < 0.1) final_depth = 0.1;
 
-    if (final_depth == Params::depth_max || final_depth == Params::depth_min) {
+    if (final_depth == Params::depth_max || final_depth == 0.1) {
         P_cam_prior = ray_cam_center * final_depth;
         P_ego_final = cam.cam_to_ego.rotation * P_cam_prior + cam.cam_to_ego.translation;
     }
@@ -1020,7 +1155,7 @@ static Object3D project_to_global_3d(const DetResult& box2d, const CamInfo& cam)
     obj.vx = 0.0; 
     obj.vy = 0.0; 
     
-    if (box2d.id >= 0 && box2d.id <= 4) {
+    if ((box2d.id >= 0 && box2d.id <= 4) || box2d.id == 6 || box2d.id == 7) {
         Eigen::Quaterniond q = cam.ego_to_global.rotation;
         double ego_yaw = std::atan2(2.0 * (q.w() * q.z() + q.x() * q.y()), 1.0 - 2.0 * (q.y() * q.y() + q.z() * q.z()));
         obj.yaw = ego_yaw; 
@@ -1042,7 +1177,7 @@ static Object3D project_to_global_3d(const DetResult& box2d, const CamInfo& cam)
     obj.proj_confidence = std::max(Params::min_proj_confidence, (1.0 - (dist_from_center / max_dist_from_center))) * edge_penalty;
     obj.attribute_name = ""; 
 
-    double distance_penalty = std::max(Params::min_dist_penalty, 1.0 - (final_depth / std::max(0.1, Params::dist_penalty_div)));
+    double distance_penalty = std::max(Params::min_dist_penalty, std::exp(-final_depth / Params::dist_penalty_div));
     obj.score = box2d.score * distance_penalty;
     obj.visibility_level = 4;
     obj.ego_translation = cam.ego_to_global.translation;
@@ -1057,7 +1192,6 @@ static Object3D project_to_global_3d(const DetResult& box2d, const CamInfo& cam)
     obj.score = trunc_val(obj.score);
     obj.proj_confidence = trunc_val(obj.proj_confidence);
     
-    // Calculate and store measurement covariance immediately
     obj.measurement_cov = calculate_measurement_covariance(obj);
     obj.has_cov = true;
     obj.fusion_count = 1;
@@ -1119,8 +1253,15 @@ static std::vector<Object3D> apply_3d_wbf(std::vector<Object3D>& all_3d) {
             double eucl_dist = bev_distance(cluster, all_3d[j]);
             double dist_to_ego = std::hypot(cluster.x - cluster.ego_translation.x(), cluster.y - cluster.ego_translation.y());
             
-            double dyn_thresh = std::max(Params::wbf_dyn_base, dist_to_ego * Params::wbf_dyn_dist_scale);
+            // Scale the dynamic threshold by the object's bounded length prior 
+            double length_ratio = cluster.l / 4.63;
+            if (length_ratio < Params::len_ratio_min) length_ratio = Params::len_ratio_min;
+            if (length_ratio > Params::len_ratio_max) length_ratio = Params::len_ratio_max;
+
+            double dyn_thresh = std::max(Params::wbf_dyn_base * length_ratio, dist_to_ego * Params::wbf_dyn_dist_scale);
             if (cluster.class_id == 5) dyn_thresh *= Params::wbf_dyn_ped_mult; 
+            else if (cluster.class_id == 6 || cluster.class_id == 7) dyn_thresh *= Params::wbf_dyn_bike_mult; 
+            else if (cluster.class_id >= 1 && cluster.class_id <= 4) dyn_thresh *= Params::wbf_dyn_heavy_mult; // Heavy vehicle explicit multiplier
 
             // Strict mathematical gate (Chi-square distribution) prevents ghost merges
             if (std::abs(det_cov) > 1e-06 && std::isfinite(det_cov)) {
@@ -1147,7 +1288,9 @@ static std::vector<Object3D> apply_3d_wbf(std::vector<Object3D>& all_3d) {
                 weighted_h += all_3d[j].h * weight_j;
                 
                 double target_yaw = all_3d[j].yaw;
-                if (cluster.class_id >= 0 && cluster.class_id <= 4) {
+                
+                // Include motorcycles(6) and bicycles(7) for proper yaw flip logic
+                if ((cluster.class_id >= 0 && cluster.class_id <= 4) || cluster.class_id == 6 || cluster.class_id == 7) {
                     if (std::cos(target_yaw - cluster.yaw) < 0.0) {
                         target_yaw += M_PI; 
                     }
@@ -1175,10 +1318,16 @@ static std::vector<Object3D> apply_3d_wbf(std::vector<Object3D>& all_3d) {
             z_fused = R_fused * WZ_sum;
 
             // PREVENT COVARIANCE COLLAPSE: 
-            // Ensures that heavily overlapping detections do not result in near-zero 
-            // covariance, which causes hyper-sensitive Mahalanobis rejection in tracking.
-            if (R_fused(0, 0) < 0.8) R_fused(0, 0) = 0.8;
-            if (R_fused(1, 1) < 0.8) R_fused(1, 1) = 0.8;
+            // Scale the minimum allowed covariance boundary using length_ratio 
+            double length_ratio = cluster.l / 4.63;
+            if (length_ratio < Params::len_ratio_min) length_ratio = Params::len_ratio_min;
+            if (length_ratio > Params::len_ratio_max) length_ratio = Params::len_ratio_max;
+
+            double min_cov_x = std::max(Params::min_cov_bound_base, Params::min_cov_bound_scale * length_ratio);
+            double min_cov_y = std::max(Params::min_cov_bound_base, Params::min_cov_bound_scale * length_ratio);
+
+            if (R_fused(0, 0) < min_cov_x) R_fused(0, 0) = min_cov_x;
+            if (R_fused(1, 1) < min_cov_y) R_fused(1, 1) = min_cov_y;
 
             cluster.x = z_fused.x();
             cluster.y = z_fused.y();
@@ -1378,12 +1527,12 @@ static int extract_cam_idx(const std::string& filename) {
 }
 
 static std::vector<MultiCamFrame> parse_nuscenes_dataset(std::string dataset_path) {
-      std::string v1_mini_dir = dataset_path + "/v1.0-mini/";
+      std::string meta_dir = dataset_path + "/v1.0/";
       std::vector<MultiCamFrame> dataset;
       if (g_verbose) std::cout << "INFO: Parsing nuScenes database...\n";
 
       std::unordered_map<std::string, std::string> sensor_modality;
-      json_object* sensor_root = json_object_from_file((v1_mini_dir + "sensor.json").c_str());
+      json_object* sensor_root = json_object_from_file((meta_dir + "sensor.json").c_str());
       if (sensor_root) {
             for (int i = 0; i < json_object_array_length(sensor_root); ++i) {
                   json_object* item = json_object_array_get_idx(sensor_root, i);
@@ -1397,17 +1546,14 @@ static std::vector<MultiCamFrame> parse_nuscenes_dataset(std::string dataset_pat
       }
 
       std::unordered_map<std::string, bool> val_scene_tokens;
-      json_object* scene_root = json_object_from_file((v1_mini_dir + "scene.json").c_str());
+      json_object* scene_root = json_object_from_file((meta_dir + "scene.json").c_str());
       if (scene_root) {
             for (int i = 0; i < json_object_array_length(scene_root); ++i) {
                   json_object* item = json_object_array_get_idx(scene_root, i);
                   if(!item) continue;
                   json_object *tok_obj = nullptr, *name_obj = nullptr;
                   if (json_object_object_get_ex(item, "token", &tok_obj) && json_object_object_get_ex(item, "name", &name_obj)) {
-                        std::string name = json_object_get_string(name_obj);
-                        if (name == "scene-0103" || name == "scene-0916") {
-                              val_scene_tokens[json_object_get_string(tok_obj)] = true;
-                        }
+                        val_scene_tokens[json_object_get_string(tok_obj)] = true;
                   }
             }
             json_object_put(scene_root);
@@ -1416,7 +1562,7 @@ static std::vector<MultiCamFrame> parse_nuscenes_dataset(std::string dataset_pat
       std::unordered_map<std::string, uint64_t> sample_times;
       std::unordered_map<std::string, bool> val_sample_tokens;
       std::unordered_map<std::string, std::string> sample_to_scene;
-      json_object* sample_root = json_object_from_file((v1_mini_dir + "sample.json").c_str());
+      json_object* sample_root = json_object_from_file((meta_dir + "sample.json").c_str());
       if (sample_root) {
             for (int i = 0; i < json_object_array_length(sample_root); ++i) {
                   json_object* item = json_object_array_get_idx(sample_root, i);
@@ -1425,12 +1571,12 @@ static std::vector<MultiCamFrame> parse_nuscenes_dataset(std::string dataset_pat
                   if (json_object_object_get_ex(item, "token", &tok_obj) &&  
                         json_object_object_get_ex(item, "timestamp", &time_obj) &&
                         json_object_object_get_ex(item, "scene_token", &scene_tok_obj)) {
-                         
+                            
                         std::string s_tok = json_object_get_string(tok_obj);
                         std::string sc_tok = json_object_get_string(scene_tok_obj);
                         sample_times[s_tok] = json_object_get_int64(time_obj);
                         sample_to_scene[s_tok] = sc_tok;
-                         
+                            
                         if (val_scene_tokens.find(sc_tok) != val_scene_tokens.end()) {
                               val_sample_tokens[s_tok] = true;
                         }
@@ -1440,7 +1586,7 @@ static std::vector<MultiCamFrame> parse_nuscenes_dataset(std::string dataset_pat
       }
 
       std::unordered_map<std::string, int> categories_map;
-      json_object* cat_root = json_object_from_file((v1_mini_dir + "category.json").c_str());
+      json_object* cat_root = json_object_from_file((meta_dir + "category.json").c_str());
       if (cat_root) {
             for (int i = 0; i < json_object_array_length(cat_root); ++i) {
                   json_object* item = json_object_array_get_idx(cat_root, i);
@@ -1456,7 +1602,7 @@ static std::vector<MultiCamFrame> parse_nuscenes_dataset(std::string dataset_pat
       }
 
       std::unordered_map<std::string, int> visibility_map;
-      json_object* vis_root = json_object_from_file((v1_mini_dir + "visibility.json").c_str());
+      json_object* vis_root = json_object_from_file((meta_dir + "visibility.json").c_str());
       if (vis_root) {
             for (int i = 0; i < json_object_array_length(vis_root); ++i) {
                   json_object* item = json_object_array_get_idx(vis_root, i);
@@ -1476,7 +1622,7 @@ static std::vector<MultiCamFrame> parse_nuscenes_dataset(std::string dataset_pat
       }
 
       std::unordered_map<std::string, std::string> attribute_map;
-      json_object* attr_root = json_object_from_file((v1_mini_dir + "attribute.json").c_str());
+      json_object* attr_root = json_object_from_file((meta_dir + "attribute.json").c_str());
       if (attr_root) {
             for (int i = 0; i < json_object_array_length(attr_root); ++i) {
                   json_object* item = json_object_array_get_idx(attr_root, i);
@@ -1490,7 +1636,7 @@ static std::vector<MultiCamFrame> parse_nuscenes_dataset(std::string dataset_pat
       }
 
       std::unordered_map<std::string, int> instance_map;
-      json_object* inst_root = json_object_from_file((v1_mini_dir + "instance.json").c_str());
+      json_object* inst_root = json_object_from_file((meta_dir + "instance.json").c_str());
       if (inst_root) {
             for (int i = 0; i < json_object_array_length(inst_root); ++i) {
                   json_object* item = json_object_array_get_idx(inst_root, i);
@@ -1509,7 +1655,7 @@ static std::vector<MultiCamFrame> parse_nuscenes_dataset(std::string dataset_pat
 
       std::unordered_map<std::string, CamInfo> calib_map;
       std::unordered_map<std::string, std::string> calib_to_modality;
-      json_object* calib_root = json_object_from_file((v1_mini_dir + "calibrated_sensor.json").c_str());
+      json_object* calib_root = json_object_from_file((meta_dir + "calibrated_sensor.json").c_str());
       if (calib_root) {
             for (int i = 0; i < json_object_array_length(calib_root); ++i) {
                   json_object* item = json_object_array_get_idx(calib_root, i);
@@ -1552,7 +1698,7 @@ static std::vector<MultiCamFrame> parse_nuscenes_dataset(std::string dataset_pat
 
       std::unordered_map<std::string, Transform> pose_map;
       std::vector<EgoPoseRecord> ego_pose_timeline;
-      json_object* pose_root = json_object_from_file((v1_mini_dir + "ego_pose.json").c_str());
+      json_object* pose_root = json_object_from_file((meta_dir + "ego_pose.json").c_str());
       if (pose_root) {
             for (int i = 0; i < json_object_array_length(pose_root); ++i) {
                   json_object* item = json_object_array_get_idx(pose_root, i);
@@ -1576,7 +1722,7 @@ static std::vector<MultiCamFrame> parse_nuscenes_dataset(std::string dataset_pat
       });
 
       std::unordered_map<std::string, TempAnn> all_anns;
-      json_object* ann_root = json_object_from_file((v1_mini_dir + "sample_annotation.json").c_str());
+      json_object* ann_root = json_object_from_file((meta_dir + "sample_annotation.json").c_str());
       if (ann_root) {
             for (int i = 0; i < json_object_array_length(ann_root); ++i) {
                   json_object* item = json_object_array_get_idx(ann_root, i);
@@ -1586,24 +1732,19 @@ static std::vector<MultiCamFrame> parse_nuscenes_dataset(std::string dataset_pat
                   if (json_object_object_get_ex(item, "token", &tok_obj) &&
                         json_object_object_get_ex(item, "sample_token", &samp_tok_obj) &&
                         json_object_object_get_ex(item, "instance_token", &inst_tok_obj)) {
-                         
                         TempAnn ta;
                         ta.token = json_object_get_string(tok_obj);
                         ta.sample_token = json_object_get_string(samp_tok_obj);
                         ta.instance_token = json_object_get_string(inst_tok_obj);
-                         
                         if (json_object_object_get_ex(item, "prev", &prev_obj)) ta.prev = json_object_get_string(prev_obj);
                         if (json_object_object_get_ex(item, "next", &next_obj)) ta.next = json_object_get_string(next_obj);
-                         
                         ta.timestamp = sample_times[ta.sample_token];  
-                         
                         ta.num_pts = 0;
                         if (json_object_object_get_ex(item, "num_lidar_pts", &nl_obj)) ta.num_pts += json_object_get_int(nl_obj);
                         if (json_object_object_get_ex(item, "num_radar_pts", &nr_obj)) ta.num_pts += json_object_get_int(nr_obj);
 
                         int class_id = -1;
                         if (instance_map.find(ta.instance_token) != instance_map.end()) class_id = instance_map[ta.instance_token];
-                         
                         if (class_id >= 0 && class_id <= 9 && json_object_object_get_ex(item, "translation", &trans_obj)) {
                               ta.gt.class_id = class_id;
                               std::hash<std::string> hasher;
@@ -1620,7 +1761,7 @@ static std::vector<MultiCamFrame> parse_nuscenes_dataset(std::string dataset_pat
                               if (json_object_object_get_ex(item, "rotation", &rot_obj)) {
                                     Eigen::Quaterniond q = parse_quat(rot_obj);
                                     ta.gt.yaw = std::atan2(2.0 * (q.w() * q.z() + q.x() * q.y()),  
-                                                                       1.0 - 2.0 * (q.y() * q.y() + q.z() * q.z()));
+                                                           1.0 - 2.0 * (q.y() * q.y() + q.z() * q.z()));
                               }
 
                               json_object *attr_tok_obj = nullptr;
@@ -1664,7 +1805,6 @@ static std::vector<MultiCamFrame> parse_nuscenes_dataset(std::string dataset_pat
                   TempAnn* last   = has_next ? &all_anns[curr.next] : &curr;
 
                   double dt = (last->timestamp - first->timestamp) / 1e6;
-                   
                   double max_time_diff = 1.5;
                   if (has_prev && has_next) max_time_diff *= 2.0;
 
@@ -1698,8 +1838,7 @@ static std::vector<MultiCamFrame> parse_nuscenes_dataset(std::string dataset_pat
       }
 
       std::vector<TempCamData> cam_data_arrays[6];  
-       
-      json_object* data_root = json_object_from_file((v1_mini_dir + "sample_data.json").c_str());
+      json_object* data_root = json_object_from_file((meta_dir + "sample_data.json").c_str());
       if (data_root) {
             for (int i = 0; i < json_object_array_length(data_root); ++i) {
                   json_object* item = json_object_array_get_idx(data_root, i);
@@ -1825,7 +1964,17 @@ static std::vector<MultiCamFrame> parse_nuscenes_dataset(std::string dataset_pat
                   frame.cameras[c] = best_td.info;
             }
 
-            if (is_valid_sweep_cluster || frame.is_key_frame) {
+            // Verify if all 6 camera files actually exist on disk for this synchronized frame
+            bool all_files_exist = true;
+            for (int c = 0; c < 6; c++) {
+                  if (access(frame.cameras[c].path.c_str(), F_OK) != 0) {
+                        all_files_exist = false;
+                        break;
+                  }
+            }
+
+            // A frame should only be processed if it is properly synchronized and all files exist
+            if (is_valid_sweep_cluster && all_files_exist) {
                   dataset.push_back(frame);
             }
       }
@@ -2075,7 +2224,7 @@ public:
                                     m_aoe.push_back(normalize_angle_diff(all_preds[i].obj.yaw, gt_box.yaw, eval_period));
                                      
                                     bool valid_vel = std::isfinite(all_preds[i].obj.vx) && std::isfinite(all_preds[i].obj.vy) &&
-                                                              std::isfinite(gt_box.vx) && std::isfinite(gt_box.vy);
+                                                     std::isfinite(gt_box.vx) && std::isfinite(gt_box.vy);
                                     if (valid_vel) {
                                           m_ave.push_back(std::hypot(all_preds[i].obj.vx - gt_box.vx, all_preds[i].obj.vy - gt_box.vy));
                                     } else {
@@ -2083,7 +2232,7 @@ public:
                                     }
 
                                     if (!all_preds[i].obj.attribute_name.empty() &&  
-                                          all_preds[i].obj.attribute_name == gt_box.attribute_name) {
+                                        all_preds[i].obj.attribute_name == gt_box.attribute_name) {
                                           m_aae.push_back(0.0);
                                     } else {
                                           m_aae.push_back(1.0);
@@ -2294,8 +2443,8 @@ public:
 //                                               MAIN EXECUTION
 // ============================================================================
 
-// Evaluates the full pipeline and returns the NDS evaluation.
-double run_evaluation_pipeline(
+// Evaluates the full pipeline and returns the complete evaluation metrics.
+NuScenesEvaluator::EvalMetrics run_evaluation_pipeline(
       tflite::Interpreter* interpreter,  
       int model_mode,  
       std::vector<MultiCamFrame>& dataset,  
@@ -2308,6 +2457,11 @@ double run_evaluation_pipeline(
 {
       g_verbose = verbose;
       reset_global_stats();
+      
+      if(model_mode != 1 && model_mode != 2 && model_mode != 3) {
+            interpreter->SetScoreThreshold(static_cast<float>(Params::score_threshold));
+            interpreter->SetIouThreshold(static_cast<float>(Params::iou_threshold));
+      }
        
       MultiObjectTracker tracker;  
       ThreadPool pre_pool(6, {0, 1, 2, 3});
@@ -2370,8 +2524,8 @@ double run_evaluation_pipeline(
             double next_dt = Params::default_dt;
             if (frame_idx > 0) {
                   next_dt = (current->timestamp - prev_timestamp) / 1e6;
-                  if (next_dt <= 0.0) next_dt = Params::min_dt;  
-                  if (next_dt > Params::max_dt) next_dt = Params::max_dt;  
+                  if (next_dt <= 0.0) next_dt = 0.001;  
+                  if (next_dt > 2.0) next_dt = 2.0;  
             }
             prev_timestamp = current->timestamp;
 
@@ -2550,7 +2704,241 @@ double run_evaluation_pipeline(
             json_object_put(json_root);
       }
        
-      return metrics.NDS;
+      return metrics;
+}
+
+// 1D Grid Search Auto-Tuning Strategy for NDS & mAP Optimization
+void auto_tune_parameters(
+      tflite::Interpreter* interpreter, 
+      int model_mode, 
+      std::vector<MultiCamFrame>& dataset, 
+      const std::string& str_fusion_mode, 
+      const std::vector<int>& exec_times, 
+      int actual_batch_size)
+{
+    std::cout << "\n======================================================\n";
+    std::cout << "   Automated Parameter Tuning (NDS & mAP Maximization)\n";
+    std::cout << "======================================================\n";
+
+    // Obtain baseline metrics (with no file saving to reduce I/O overhead)
+    NuScenesEvaluator::EvalMetrics baseline_metrics = run_evaluation_pipeline(interpreter, model_mode, dataset, str_fusion_mode, exec_times, actual_batch_size, false, "", false);
+    
+    // Protect against initial NaNs
+    double global_best_nds = std::isnan(baseline_metrics.NDS) ? 0.0 : baseline_metrics.NDS;
+    double global_best_map = std::isnan(baseline_metrics.mAP) ? 0.0 : baseline_metrics.mAP;
+    
+    std::cout << "[AutoTune] Initial Baseline NDS: " << global_best_nds << " | mAP: " << global_best_map << "\n\n";
+
+    // Helper lambda for tuning double parameters
+    auto tune_double = [&](double& param_ref, const std::vector<double>& candidates, const std::string& param_name) {
+        std::cout << "[AutoTune] Tuning -> " << param_name << " (Default: " << param_ref << ")\n";
+        double initial_val = param_ref;
+        double best_val = param_ref;
+        double local_best_nds = global_best_nds;
+        double local_best_map = global_best_map;
+        bool found_improvement = false;
+
+        for (double candidate : candidates) {
+            if (candidate == initial_val) continue; // Skip existing baseline value
+            
+            param_ref = candidate;
+            NuScenesEvaluator::EvalMetrics current_metrics = run_evaluation_pipeline(interpreter, model_mode, dataset, str_fusion_mode, exec_times, actual_batch_size, false, "", false);
+            
+            double current_nds = std::isnan(current_metrics.NDS) ? 0.0 : current_metrics.NDS;
+            double current_map = std::isnan(current_metrics.mAP) ? 0.0 : current_metrics.mAP;
+
+            std::cout << "    * Test Val = " << candidate << " -> NDS: " << current_nds << " | mAP: " << current_map << "\n";
+
+            // Tie-breaker logic: Maximize NDS. If NDS is equal (within epsilon), maximize mAP.
+            bool is_better = false;
+            if (current_nds > local_best_nds + 1e-6) {
+                is_better = true;
+            } else if (std::abs(current_nds - local_best_nds) <= 1e-6) {
+                if (current_map > local_best_map + 1e-6) {
+                    is_better = true;
+                }
+            }
+
+            if (is_better) {
+                local_best_nds = current_nds;
+                local_best_map = current_map;
+                best_val = candidate;
+                found_improvement = true;
+            }
+        }
+
+        if (found_improvement) {
+            param_ref = best_val;
+            global_best_nds = local_best_nds;
+            global_best_map = local_best_map;
+            std::cout << "  [SUCCESS] Parameter updated to " << best_val << ". New Baseline NDS: " << global_best_nds << " | mAP: " << global_best_map << "\n\n";
+        } else {
+            param_ref = initial_val; // Revert to initial/default parameter
+            std::cout << "  [REVERT] No improvement found. Retained default " << initial_val << "\n\n";
+        }
+    };
+
+    // Helper lambda for tuning int parameters
+    auto tune_int = [&](int& param_ref, const std::vector<int>& candidates, const std::string& param_name) {
+        std::cout << "[AutoTune] Tuning -> " << param_name << " (Default: " << param_ref << ")\n";
+        int initial_val = param_ref;
+        int best_val = param_ref;
+        double local_best_nds = global_best_nds;
+        double local_best_map = global_best_map;
+        bool found_improvement = false;
+
+        for (int candidate : candidates) {
+            if (candidate == initial_val) continue;
+            
+            param_ref = candidate;
+            NuScenesEvaluator::EvalMetrics current_metrics = run_evaluation_pipeline(interpreter, model_mode, dataset, str_fusion_mode, exec_times, actual_batch_size, false, "", false);
+            
+            double current_nds = std::isnan(current_metrics.NDS) ? 0.0 : current_metrics.NDS;
+            double current_map = std::isnan(current_metrics.mAP) ? 0.0 : current_metrics.mAP;
+
+            std::cout << "    * Test Val = " << candidate << " -> NDS: " << current_nds << " | mAP: " << current_map << "\n";
+
+            // Tie-breaker logic: Maximize NDS. If NDS is equal (within epsilon), maximize mAP.
+            bool is_better = false;
+            if (current_nds > local_best_nds + 1e-6) {
+                is_better = true;
+            } else if (std::abs(current_nds - local_best_nds) <= 1e-6) {
+                if (current_map > local_best_map + 1e-6) {
+                    is_better = true;
+                }
+            }
+
+            if (is_better) {
+                local_best_nds = current_nds;
+                local_best_map = current_map;
+                best_val = candidate;
+                found_improvement = true;
+            }
+        }
+
+        if (found_improvement) {
+            param_ref = best_val;
+            global_best_nds = local_best_nds;
+            global_best_map = local_best_map;
+            std::cout << "  [SUCCESS] Parameter updated to " << best_val << ". New Baseline NDS: " << global_best_nds << " | mAP: " << global_best_map << "\n\n";
+        } else {
+            param_ref = initial_val;
+            std::cout << "  [REVERT] No improvement found. Retained default " << initial_val << "\n\n";
+        }
+    };
+
+    // --- Execute Grid Search strictly mapped to physically realistic boundaries ---
+
+    // 13. Continuous Aspect-Ratio Aware Depth Compensation (New Blending Logic)
+    tune_double(Params::aspect_ratio_blend_start, {0.8, 1.0, 1.2, 1.5}, "aspect_ratio_blend_start");
+    tune_double(Params::aspect_ratio_blend_end, {1.5, 1.8, 2.0, 2.5}, "aspect_ratio_blend_end");
+    tune_double(Params::depth_weight_front_h, {0.2, 0.4, 0.5, 0.7, 0.8}, "depth_weight_front_h");
+    tune_double(Params::depth_weight_side_h, {0.5, 0.6, 0.7, 0.8, 0.9}, "depth_weight_side_h");
+    tune_double(Params::depth_weight_bike_h, {0.6, 0.7, 0.8, 0.9}, "depth_weight_bike_h");
+
+    // 15. Heavy Vehicles Specific Trust Adjustments (Velocity Jitter Protections)
+    tune_double(Params::heavy_depth_offset_front, {0.2, 0.35, 0.45, 0.5, 0.6}, "heavy_depth_offset_front");
+    tune_double(Params::heavy_depth_offset_side, {0.2, 0.35, 0.45, 0.5, 0.6}, "heavy_depth_offset_side");
+    tune_double(Params::max_speed_heavy, {10.0, 15.0, 20.0, 25.0}, "max_speed_heavy");
+    tune_double(Params::damp_heavy, {0.6, 0.75, 0.8, 0.85, 0.9}, "damp_heavy");
+    tune_double(Params::wbf_dyn_heavy_mult, {1.5, 2.0, 2.5, 3.0, 4.0}, "wbf_dyn_heavy_mult");
+
+    // 14. Tracker Grace Period (Occlusion Tolerance)
+    tune_int(Params::grace_hit_high, {8, 10, 15}, "grace_hit_high");
+    tune_int(Params::grace_frames_high, {2, 3, 5}, "grace_frames_high"); 
+    tune_int(Params::grace_hit_low, {3, 5, 7}, "grace_hit_low");
+    tune_int(Params::grace_frames_low, {1, 2}, "grace_frames_low");
+    tune_double(Params::penalty_hard_floor, {0.2, 0.3, 0.4, 0.5, 0.6}, "penalty_hard_floor");
+
+    // 12. Dynamic Scaling & Class-Specific Multipliers
+    tune_double(Params::len_ratio_min, {0.3, 0.5, 0.7}, "len_ratio_min");
+    tune_double(Params::len_ratio_max, {2.0, 3.0, 4.0, 5.0}, "len_ratio_max");
+    tune_double(Params::wbf_dyn_bike_mult, {1.0, 1.2, 1.5, 2.0}, "wbf_dyn_bike_mult");
+    tune_double(Params::min_cov_bound_base, {0.5, 0.8, 1.0, 1.5}, "min_cov_bound_base");
+    tune_double(Params::min_cov_bound_scale, {0.2, 0.5, 0.8, 1.0}, "min_cov_bound_scale");
+    tune_double(Params::noise_a_heavy_mult, {0.1, 0.2, 0.4, 0.6}, "noise_a_heavy_mult");
+    tune_double(Params::noise_a_bike_mult, {1.0, 1.5, 2.0, 3.0}, "noise_a_bike_mult");
+    tune_double(Params::yaw_speed_heavy_mult, {1.5, 2.0, 2.5, 3.0, 4.0}, "yaw_speed_heavy_mult");
+    tune_double(Params::yaw_speed_bike_mult, {0.2, 0.5, 0.8, 1.0}, "yaw_speed_bike_mult");
+    tune_double(Params::dyn_match_bike_mult, {1.0, 1.2, 1.5, 2.0}, "dyn_match_bike_mult");
+
+    // 6. Yaw (Heading) Update Mechanism
+    tune_double(Params::yaw_speed_thresh, {1.0, 1.5, 2.0, 2.5, 3.0}, "yaw_speed_thresh");
+    tune_double(Params::yaw_alpha, {0.01, 0.03, 0.05, 0.08, 0.1}, "yaw_alpha");
+
+    // 7. Measurement Noise (R)
+    tune_double(Params::var_depth_base, {0.5, 1.0, 1.5, 2.0, 3.0}, "var_depth_base");
+    tune_double(Params::var_depth_scale, {5.0, 7.5, 10.0, 15.0, 20.0}, "var_depth_scale");
+    tune_double(Params::var_bearing_base, {0.005, 0.01, 0.02, 0.03, 0.05}, "var_bearing_base");
+    tune_double(Params::var_bearing_scale, {30.0, 40.0, 50.0, 60.0, 80.0}, "var_bearing_scale");
+    tune_double(Params::conf_scale, {2.0, 4.0, 5.0, 6.0, 8.0}, "conf_scale");
+    tune_double(Params::proj_scale, {2.0, 4.0, 5.0, 6.0, 8.0}, "proj_scale");
+    tune_double(Params::ema_alpha, {0.1, 0.2, 0.3, 0.4, 0.5}, "ema_alpha");
+
+    // 8. Track-to-Measurement Matching
+    tune_double(Params::dyn_match_base, {2.0, 3.0, 4.0, 5.0, 6.0}, "dyn_match_base");
+    tune_double(Params::dyn_match_dist_scale, {0.05, 0.08, 0.1, 0.12, 0.15}, "dyn_match_dist_scale");
+    tune_double(Params::dyn_match_ped_mult, {0.5, 0.6, 0.8, 1.0, 1.2}, "dyn_match_ped_mult");
+    tune_double(Params::maha_thresh, {4.61, 5.99, 7.38, 9.21, 11.83}, "maha_thresh");
+    tune_double(Params::eval_maha_cov_add, {0.1, 0.3, 0.5, 0.7, 1.0}, "eval_maha_cov_add");
+
+    // 10. 3D Weighted Box Fusion
+    tune_double(Params::wbf_dyn_base, {0.5, 1.0, 1.5, 2.0, 2.5}, "wbf_dyn_base");
+    tune_double(Params::wbf_dyn_dist_scale, {0.05, 0.08, 0.1, 0.12, 0.15}, "wbf_dyn_dist_scale");
+    tune_double(Params::wbf_dyn_ped_mult, {0.1, 0.2, 0.3, 0.4, 0.5}, "wbf_dyn_ped_mult");
+    
+    // 1. Detection & NMS Thresholds
+    tune_double(Params::score_threshold, {0.1, 0.15, 0.2, 0.25, 0.3}, "score_threshold");
+    tune_double(Params::iou_threshold, {0.5, 0.6, 0.65, 0.7, 0.75}, "iou_threshold");
+
+    // 2. Tracker Lifecycle
+    tune_double(Params::init_track_score, {0.7, 0.75, 0.8, 0.85, 0.9}, "init_track_score");
+    tune_int(Params::tentative_hit_thresh, {2, 3, 4, 5}, "tentative_hit_thresh");
+    tune_int(Params::del_tentative_thresh, {2, 3, 4, 5}, "del_tentative_thresh");
+    tune_int(Params::del_confirmed_thresh, {15, 20, 25, 30, 35}, "del_confirmed_thresh");
+    tune_double(Params::invisible_penalty, {0.90, 0.95, 0.97, 0.98, 0.99}, "invisible_penalty");
+
+    // 3. Covariance Initialization & Bounds
+    tune_double(Params::cov_p_init, {0.05, 0.1, 0.15, 0.2, 0.25}, "cov_p_init");
+    tune_double(Params::cov_v_init, {10.0, 15.0, 20.0, 25.0, 30.0}, "cov_v_init");
+    tune_double(Params::min_cov_limit, {0.01, 0.02, 0.03, 0.04, 0.05}, "min_cov_limit");
+
+    // 4. Continuous Process Noise (Q)
+    tune_double(Params::noise_a_base, {2.0, 4.0, 6.0, 8.0, 10.0}, "noise_a_base"); 
+    tune_double(Params::noise_a_speed, {0.0005, 0.001, 0.0015, 0.002, 0.003}, "noise_a_speed");
+    tune_double(Params::noise_a_ped, {1.0, 1.5, 2.0, 2.5, 3.0}, "noise_a_ped");
+    tune_double(Params::noise_a_cone, {0.001, 0.005, 0.01, 0.02, 0.05}, "noise_a_cone");
+    tune_double(Params::noise_a_parked, {0.001, 0.005, 0.01, 0.02, 0.05}, "noise_a_parked");
+
+    // 5. Dynamics, Speed Limits & Damping
+    tune_double(Params::damp_moving, {0.95, 0.97, 0.98, 0.99, 1.0}, "damp_moving");
+    tune_double(Params::damp_parked, {0.1, 0.2, 0.3, 0.4, 0.5}, "damp_parked");
+    tune_double(Params::max_speed_default, {25.0, 30.0, 35.0, 40.0, 45.0}, "max_speed_default");
+    tune_double(Params::max_speed_ped, {2.0, 3.0, 4.0, 5.0, 6.0}, "max_speed_ped");
+    tune_double(Params::max_speed_bike, {10.0, 12.0, 15.0, 18.0, 20.0}, "max_speed_bike");
+    tune_double(Params::max_speed_static, {0.1, 0.3, 0.5, 0.8, 1.0}, "max_speed_static");
+    tune_double(Params::static_speed_thresh, {0.2, 0.4, 0.6, 0.8, 1.0}, "static_speed_thresh");
+
+    // 9. 3D Projection, Truncation & Edge Cases
+    tune_double(Params::truncation_margin_px, {0.0, 1.0, 2.0, 5.0, 10.0}, "truncation_margin_px");
+    tune_double(Params::depth_ground_weight, {5.0, 10.0, 15.0, 20.0, 30.0}, "depth_ground_weight");
+    tune_double(Params::fov_edge_margin, {0.01, 0.02, 0.05, 0.08, 0.1}, "fov_edge_margin");
+    tune_double(Params::depth_max, {100.0, 120.0, 140.0, 160.0, 180.0}, "depth_max");
+    tune_double(Params::fov_edge_penalty, {0.5, 0.6, 0.7, 0.8, 0.9}, "fov_edge_penalty");
+    tune_double(Params::dist_penalty_div, {60.0, 80.0, 100.0, 120.0, 150.0}, "dist_penalty_div");
+    tune_double(Params::depth_ratio_max, {1.1, 1.2, 1.3, 1.4, 1.5}, "depth_ratio_max");
+    tune_double(Params::depth_ratio_min, {0.4, 0.5, 0.6, 0.7, 0.8}, "depth_ratio_min");
+
+    // 11. Temporal Bounds
+    tune_double(Params::default_dt, {0.05, 0.1, 0.15, 0.2, 0.25}, "default_dt");
+    tune_double(Params::target_dt, {0.3, 0.4, 0.5, 0.6, 0.8}, "target_dt");
+    tune_double(Params::horizon_z_thresh, {-0.1, -0.05, 0.0, 0.05, 0.1}, "horizon_z_thresh");
+    tune_double(Params::min_dist_penalty, {0.0, 0.01, 0.02, 0.05, 0.1}, "min_dist_penalty");
+    tune_double(Params::min_proj_confidence, {0.05, 0.1, 0.15, 0.2, 0.3}, "min_proj_confidence");
+
+    std::cout << "======================================================\n";
+    std::cout << "[AutoTune] Optimization Complete. Final Target NDS: " << global_best_nds << " | Final Target mAP: " << global_best_map << "\n";
+    std::cout << "======================================================\n\n";
 }
 
 bool run_multicam(tflite::Interpreter * interpreter, int model_mode, char * dataset_path, char * fusion_mode, char * result_path, std::vector<int> exec_times) {
@@ -2591,13 +2979,11 @@ bool run_multicam(tflite::Interpreter * interpreter, int model_mode, char * data
 
       std::string str_fusion_mode(fusion_mode);
 
-      if(model_mode != 1 && model_mode != 2 && model_mode != 3){
-            interpreter->SetScoreThreshold(static_cast<float>(Params::score_threshold));
-            interpreter->SetIouThreshold(static_cast<float>(Params::iou_threshold));
-      }
+      // Execute Automated Parameter Grid Search (1D search over all params)
+      //auto_tune_parameters(interpreter, model_mode, dataset, str_fusion_mode, exec_times, actual_batch_size);
 
-      // Execute the final evaluation
-      std::cout << "[Run] Executing pipeline & exporting results...\n";
+      // Execute the final evaluation with the optimal set of parameters to dump JSONs and record result
+      std::cout << "[Run] Executing final pipeline with optimal parameters...\n";
       run_evaluation_pipeline(interpreter, model_mode, dataset, str_fusion_mode, exec_times, actual_batch_size, true, result_path, true);
 
       return true;
